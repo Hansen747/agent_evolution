@@ -16,6 +16,14 @@ function headers(extra: Record<string, string> = {}): Record<string, string> {
   return h
 }
 
+/** Auth headers without Content-Type (for multipart/form-data). */
+function authHeaders(): Record<string, string> {
+  const h: Record<string, string> = {}
+  const token = getToken()
+  if (token) h['Authorization'] = `Bearer ${token}`
+  return h
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
@@ -94,6 +102,29 @@ interface AssetListParams {
   max_price?: number
 }
 
+export interface AssetPublishData {
+  file: File
+  name: string
+  entry_file: string
+  description?: string
+  tags?: string[]
+  dependencies?: string[]
+  tools_used?: string[]
+  price?: number
+  license_type?: string
+  parent_asset_id?: string
+  supersedes_id?: string
+  evolution_note?: string
+}
+
+export interface AssetUpdateData {
+  file?: File
+  description?: string
+  tags?: string[]
+  price?: number
+  is_listed?: boolean
+}
+
 export const assets = {
   list: (params: AssetListParams = {}) => {
     const qs = new URLSearchParams()
@@ -102,16 +133,96 @@ export const assets = {
     })
     return get<PaginatedResponse<AssetBrief>>(`/assets/?${qs}`)
   },
+
   get: (id: string) => get<AssetFull>(`/assets/${id}`),
-  publish: (data: {
-    name: string; description?: string; tags?: string[]; code: string;
-    skill_md?: string; price?: number; license_type?: string;
-  }) => post<AssetFull>('/assets/', data),
-  update: (id: string, data: Record<string, unknown>) => put<AssetFull>(`/assets/${id}`, data),
+
+  /** Upload a new asset as a zip archive (multipart/form-data). */
+  publish: async (data: AssetPublishData): Promise<AssetFull> => {
+    const form = new FormData()
+    form.append('file', data.file)
+    form.append('name', data.name)
+    form.append('entry_file', data.entry_file)
+    if (data.description) form.append('description', data.description)
+    if (data.tags) form.append('tags', JSON.stringify(data.tags))
+    if (data.dependencies) form.append('dependencies', JSON.stringify(data.dependencies))
+    if (data.tools_used) form.append('tools_used', JSON.stringify(data.tools_used))
+    if (data.price !== undefined) form.append('price', String(data.price))
+    if (data.license_type) form.append('license_type', data.license_type)
+    if (data.parent_asset_id) form.append('parent_asset_id', data.parent_asset_id)
+    if (data.supersedes_id) form.append('supersedes_id', data.supersedes_id)
+    if (data.evolution_note) form.append('evolution_note', data.evolution_note)
+
+    const res = await fetch(`${BASE}/assets/`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: form,
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ detail: res.statusText }))
+      throw new ApiError(res.status, body.detail || 'Upload failed')
+    }
+    return res.json()
+  },
+
+  /** Update an asset, optionally re-uploading a new zip. */
+  update: async (id: string, data: AssetUpdateData): Promise<AssetFull> => {
+    const form = new FormData()
+    if (data.file) form.append('file', data.file)
+    if (data.description !== undefined) form.append('description', data.description)
+    if (data.tags) form.append('tags', JSON.stringify(data.tags))
+    if (data.price !== undefined) form.append('price', String(data.price))
+    if (data.is_listed !== undefined) form.append('is_listed', String(data.is_listed))
+
+    const res = await fetch(`${BASE}/assets/${id}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: form,
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ detail: res.statusText }))
+      throw new ApiError(res.status, body.detail || 'Update failed')
+    }
+    return res.json()
+  },
+
   delete: (id: string) => del<{ message: string }>(`/assets/${id}`),
+
   rate: (id: string, rating: number, comment = '') =>
     post<{ message: string }>(`/assets/${id}/rate`, { rating, comment }),
-  download: (id: string) => post<AssetFull>(`/assets/${id}/download`),
+
+  /** Download the asset zip archive as a Blob. Triggers browser download. */
+  download: async (id: string, filename?: string): Promise<void> => {
+    const res = await fetch(`${BASE}/assets/${id}/download`, {
+      method: 'POST',
+      headers: authHeaders(),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ detail: res.statusText }))
+      throw new ApiError(res.status, body.detail || 'Download failed')
+    }
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename || `asset-${id}.zip`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  },
+
+  /** Get a single file from the archive (text content). */
+  getFile: async (id: string, filename: string): Promise<string> => {
+    const res = await fetch(`${BASE}/assets/${id}/files/${encodeURIComponent(filename)}`, {
+      headers: authHeaders(),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ detail: res.statusText }))
+      throw new ApiError(res.status, body.detail || 'File access denied')
+    }
+    return res.text()
+  },
+
   myPublished: () => get<AssetBrief[]>('/assets/me/published'),
 }
 

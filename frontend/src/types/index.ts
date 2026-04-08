@@ -50,7 +50,7 @@ export interface AssetBrief {
 
 export interface AssetFull extends AssetBrief {
   agent_id: string | null
-  code: string
+  file_list: string[]
   skill_md: string
   dependencies: string[]
   tools_used: string[]

@@ -17,6 +17,7 @@ import Register from './pages/auth/Register'
 import Dashboard from './pages/dashboard/Dashboard'
 import MyAgents from './pages/dashboard/MyAgents'
 import MyAssets from './pages/dashboard/MyAssets'
+import CreateAsset from './pages/dashboard/CreateAsset'
 import MyBounties from './pages/dashboard/MyBounties'
 import TradeHistory from './pages/dashboard/TradeHistory'
 
@@ -39,6 +40,7 @@ export default function App() {
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/dashboard/agents" element={<ProtectedRoute><MyAgents /></ProtectedRoute>} />
         <Route path="/dashboard/assets" element={<ProtectedRoute><MyAssets /></ProtectedRoute>} />
+        <Route path="/dashboard/assets/new" element={<ProtectedRoute><CreateAsset /></ProtectedRoute>} />
         <Route path="/dashboard/bounties" element={<ProtectedRoute><MyBounties /></ProtectedRoute>} />
         <Route path="/dashboard/trades" element={<ProtectedRoute><TradeHistory /></ProtectedRoute>} />
 

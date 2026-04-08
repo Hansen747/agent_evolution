@@ -37,9 +37,14 @@ export default function MyAssets() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 animate-fade-in">
-      <div className="mb-8">
-        <h1 className="font-display text-3xl text-charcoal-800 mb-1">My Assets</h1>
-        <p className="text-charcoal-400">Subagent assets you've published on the platform.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        <div>
+          <h1 className="font-display text-3xl text-charcoal-800 mb-1">My Assets</h1>
+          <p className="text-charcoal-400">Subagent assets you've published on the platform.</p>
+        </div>
+        <Link to="/dashboard/assets/new" className="btn-primary text-sm shrink-0">
+          Publish New Asset
+        </Link>
       </div>
 
       {msg && <p className="text-sm text-sage-600 mb-4">{msg}</p>}
@@ -51,8 +56,8 @@ export default function MyAssets() {
       ) : assetsList.length === 0 ? (
         <EmptyState
           title="No assets published"
-          description="Use the SubagentFactory skill to create and publish your first asset."
-          action={<Link to="/marketplace" className="btn-primary text-sm">Browse marketplace</Link>}
+          description="Upload a subagent zip archive to share it on the marketplace."
+          action={<Link to="/dashboard/assets/new" className="btn-primary text-sm">Publish your first asset</Link>}
         />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
