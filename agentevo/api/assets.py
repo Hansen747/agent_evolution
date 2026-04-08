@@ -1,24 +1,101 @@
 """
-Asset API: publish, search, retrieve, rate, and manage subagent assets.
+Asset API: publish, search, retrieve, rate, download, and manage subagent assets.
+
+Assets are uploaded as .zip archives containing at minimum an entry Python file.
+The archive is stored on disk; metadata (including SKILL.md content for public
+preview) is stored in the database.
 """
 
+import json
+import os
+import zipfile
+from io import BytesIO
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
+from agentevo.core.config import settings
 from agentevo.core.database import get_db
 from agentevo.core.security import get_current_user_id
 from agentevo.core.scoring import compute_asset_score
-from agentevo.models.models import SubagentAsset, User, OperationLog
+from agentevo.models.models import SubagentAsset, User, Trade, OperationLog
 from agentevo.api.schemas import (
-    AssetPublishRequest, AssetUpdateRequest, AssetResponse,
+    AssetUpdateRequest, AssetResponse,
     AssetBriefResponse, AssetRateRequest,
     PaginatedResponse, MessageResponse,
 )
 
 router = APIRouter(prefix="/assets", tags=["assets"])
+
+# ---------------------------------------------------------------------------
+# Storage helpers
+# ---------------------------------------------------------------------------
+ASSET_STORAGE = os.path.join(settings.STORAGE_DIR, "assets")
+
+
+def _ensure_storage():
+    os.makedirs(ASSET_STORAGE, exist_ok=True)
+
+
+def _archive_path(asset_id: str) -> str:
+    return os.path.join(ASSET_STORAGE, f"{asset_id}.zip")
+
+
+def _validate_zip(data: bytes, entry_file: str) -> tuple[list[str], str]:
+    """
+    Validate a zip archive.
+
+    Returns:
+        (file_list, skill_md_content)
+
+    Raises HTTPException on invalid archives.
+    """
+    try:
+        zf = zipfile.ZipFile(BytesIO(data))
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="Uploaded file is not a valid zip archive")
+
+    names = zf.namelist()
+    if not names:
+        raise HTTPException(status_code=400, detail="Zip archive is empty")
+
+    if entry_file not in names:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Zip archive must contain the entry file '{entry_file}'. Found: {names}",
+        )
+
+    # Extract SKILL.md content for public preview (case-insensitive search)
+    skill_md = ""
+    for name in names:
+        if name.lower() == "skill.md":
+            skill_md = zf.read(name).decode("utf-8", errors="replace")
+            break
+
+    return names, skill_md
+
+
+def _read_entry_code(archive_path: str, entry_file: str) -> str:
+    """Read the entry file source code from a stored archive."""
+    try:
+        with zipfile.ZipFile(archive_path, "r") as zf:
+            return zf.read(entry_file).decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+
+
+def _read_file_from_archive(archive_path: str, filename: str) -> Optional[bytes]:
+    """Read an arbitrary file from a stored archive."""
+    try:
+        with zipfile.ZipFile(archive_path, "r") as zf:
+            if filename in zf.namelist():
+                return zf.read(filename)
+    except Exception:
+        pass
+    return None
 
 
 def _recompute_score(asset: SubagentAsset):
@@ -35,36 +112,84 @@ def _recompute_score(asset: SubagentAsset):
 # ---- Publish & CRUD -------------------------------------------------------
 
 @router.post("/", response_model=AssetResponse, status_code=status.HTTP_201_CREATED)
-def publish_asset(
-    req: AssetPublishRequest,
+async def publish_asset(
+    file: UploadFile = File(..., description="Zip archive containing the subagent package"),
+    name: str = Form(..., min_length=1, max_length=128),
+    entry_file: str = Form("subagent.py"),
+    description: str = Form(""),
+    tags: str = Form("[]", description="JSON array of tags, e.g. '[\"research\",\"web\"]'"),
+    dependencies: str = Form("[]", description="JSON array of pip packages"),
+    tools_used: str = Form("[]", description="JSON array of tool names"),
+    price: float = Form(0.0),
+    license_type: str = Form("MIT"),
+    parent_asset_id: Optional[str] = Form(None),
+    supersedes_id: Optional[str] = Form(None),
+    evolution_note: str = Form(""),
     agent_id: Optional[str] = Query(None, description="Agent that produced this asset"),
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    """Publish a new subagent asset to the platform."""
+    """Publish a new subagent asset by uploading a zip archive."""
+    _ensure_storage()
+
+    # Parse JSON form fields
+    try:
+        tags_list = json.loads(tags) if tags else []
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="tags must be a valid JSON array")
+    try:
+        deps_list = json.loads(dependencies) if dependencies else []
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="dependencies must be a valid JSON array")
+    try:
+        tools_list = json.loads(tools_used) if tools_used else []
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="tools_used must be a valid JSON array")
+
+    # Read and validate zip
+    data = await file.read()
+    file_list, skill_md = _validate_zip(data, entry_file)
+
+    # Read entry code for quality estimation
+    entry_code = ""
+    try:
+        zf = zipfile.ZipFile(BytesIO(data))
+        entry_code = zf.read(entry_file).decode("utf-8", errors="replace")
+    except Exception:
+        pass
+
+    # Create database record (to get the id)
     asset = SubagentAsset(
         creator_id=user_id,
         agent_id=agent_id,
-        name=req.name,
-        description=req.description,
-        tags=req.tags,
-        entry_file=req.entry_file,
-        code=req.code,
-        skill_md=req.skill_md,
-        dependencies=req.dependencies,
-        tools_used=req.tools_used,
-        price=req.price,
-        license_type=req.license_type,
-        parent_asset_id=req.parent_asset_id,
-        supersedes_id=req.supersedes_id,
-        evolution_note=req.evolution_note,
+        name=name,
+        description=description,
+        tags=tags_list,
+        entry_file=entry_file,
+        file_list=file_list,
+        skill_md=skill_md,
+        dependencies=deps_list,
+        tools_used=tools_list,
+        price=price,
+        license_type=license_type,
+        parent_asset_id=parent_asset_id if parent_asset_id else None,
+        supersedes_id=supersedes_id if supersedes_id else None,
+        evolution_note=evolution_note,
     )
 
-    # Basic quality heuristic (can be replaced by AI review later)
-    asset.quality_score = _estimate_quality(req.code, req.skill_md, req.description)
+    # Quality heuristic
+    asset.quality_score = _estimate_quality(entry_code, skill_md, description)
     _recompute_score(asset)
 
     db.add(asset)
+    db.flush()  # get asset.id
+
+    # Save zip to disk
+    archive = _archive_path(asset.id)
+    with open(archive, "wb") as f:
+        f.write(data)
+    asset.archive_path = archive
+
     db.commit()
     db.refresh(asset)
 
@@ -101,7 +226,7 @@ def list_assets(
 
     # Tag filter (JSON array contains — use LIKE on the raw column for SQLite compat)
     if tag:
-        from sqlalchemy import func, literal_column
+        from sqlalchemy import func
         query = query.filter(
             func.json_array_length(SubagentAsset.tags) > 0,
             SubagentAsset.tags.like(f'%"{tag}"%'),
@@ -130,36 +255,123 @@ def list_assets(
     )
 
 
+@router.get("/me/published", response_model=list[AssetBriefResponse])
+def my_assets(
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """List assets published by the current user."""
+    return db.query(SubagentAsset).filter(SubagentAsset.creator_id == user_id).all()
+
+
 @router.get("/{asset_id}", response_model=AssetResponse)
 def get_asset(asset_id: str, db: Session = Depends(get_db)):
-    """Get full details of a specific asset (including code)."""
+    """
+    Get full metadata of an asset (public).
+
+    Includes SKILL.md content and file list for preview.
+    Source code is NOT included — use the download endpoint to get the zip.
+    """
     asset = db.query(SubagentAsset).filter(SubagentAsset.id == asset_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
     return asset
 
 
-@router.put("/{asset_id}", response_model=AssetResponse)
-def update_asset(
+@router.get("/{asset_id}/files/{filename:path}")
+def get_asset_file(
     asset_id: str,
-    req: AssetUpdateRequest,
+    filename: str,
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    """Update an asset you own."""
+    """
+    Read a specific file from the asset archive.
+
+    Only the asset creator or users who have purchased it can view files.
+    """
+    asset = db.query(SubagentAsset).filter(SubagentAsset.id == asset_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    # Authorization: creator or purchaser
+    is_creator = asset.creator_id == user_id
+    has_purchased = db.query(Trade).filter(
+        Trade.asset_id == asset_id, Trade.buyer_id == user_id
+    ).first() is not None
+    # Also allow if asset is free and user has downloaded (usage_count > 0 isn't per-user, so just allow free assets)
+    is_free = asset.price <= 0
+
+    if not (is_creator or has_purchased or is_free):
+        raise HTTPException(status_code=403, detail="Purchase this asset to view its files")
+
+    if not asset.archive_path or not os.path.exists(asset.archive_path):
+        raise HTTPException(status_code=404, detail="Archive not found on disk")
+
+    content = _read_file_from_archive(asset.archive_path, filename)
+    if content is None:
+        raise HTTPException(status_code=404, detail=f"File '{filename}' not found in archive")
+
+    # Return as plain text for code files, raw bytes otherwise
+    from fastapi.responses import Response
+    if filename.endswith((".py", ".md", ".txt", ".json", ".yaml", ".yml", ".toml", ".cfg", ".ini")):
+        return Response(content=content, media_type="text/plain; charset=utf-8")
+    return Response(content=content, media_type="application/octet-stream")
+
+
+@router.put("/{asset_id}", response_model=AssetResponse)
+async def update_asset(
+    asset_id: str,
+    file: Optional[UploadFile] = File(None, description="New zip archive (optional)"),
+    description: Optional[str] = Form(None),
+    tags: Optional[str] = Form(None),
+    price: Optional[float] = Form(None),
+    is_listed: Optional[bool] = Form(None),
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """Update an asset you own. Optionally re-upload the zip archive."""
     asset = db.query(SubagentAsset).filter(
         SubagentAsset.id == asset_id, SubagentAsset.creator_id == user_id
     ).first()
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found or not owned by you")
 
-    for field, value in req.model_dump(exclude_none=True).items():
-        setattr(asset, field, value)
+    if description is not None:
+        asset.description = description
+    if tags is not None:
+        try:
+            asset.tags = json.loads(tags)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="tags must be a valid JSON array")
+    if price is not None:
+        asset.price = price
+    if is_listed is not None:
+        asset.is_listed = is_listed
 
-    if req.code is not None:
-        asset.quality_score = _estimate_quality(req.code, asset.skill_md, asset.description)
+    # Re-upload archive
+    if file is not None:
+        _ensure_storage()
+        data = await file.read()
+        file_list, skill_md = _validate_zip(data, asset.entry_file)
+
+        archive = _archive_path(asset.id)
+        with open(archive, "wb") as f:
+            f.write(data)
+        asset.archive_path = archive
+        asset.file_list = file_list
+        asset.skill_md = skill_md
+
+        # Re-estimate quality
+        entry_code = ""
+        try:
+            zf = zipfile.ZipFile(BytesIO(data))
+            entry_code = zf.read(asset.entry_file).decode("utf-8", errors="replace")
+        except Exception:
+            pass
+        asset.quality_score = _estimate_quality(entry_code, skill_md, asset.description)
+
     _recompute_score(asset)
-
     db.commit()
     db.refresh(asset)
     return asset
@@ -171,12 +383,17 @@ def delete_asset(
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    """Delist / delete an asset."""
+    """Delist / delete an asset and its archive."""
     asset = db.query(SubagentAsset).filter(
         SubagentAsset.id == asset_id, SubagentAsset.creator_id == user_id
     ).first()
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found or not owned by you")
+
+    # Remove archive from disk
+    if asset.archive_path and os.path.exists(asset.archive_path):
+        os.remove(asset.archive_path)
+
     db.delete(asset)
     db.commit()
     return MessageResponse(message="Asset deleted")
@@ -209,40 +426,47 @@ def rate_asset(
 
 # ---- Download / Use -------------------------------------------------------
 
-@router.post("/{asset_id}/download", response_model=AssetResponse)
+@router.post("/{asset_id}/download")
 def download_asset(
     asset_id: str,
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    """Download / acquire a free asset. Increments counters."""
+    """
+    Download a free asset's zip archive. Increments counters.
+
+    For paid assets, use /trades/purchase first then download.
+    """
     asset = db.query(SubagentAsset).filter(SubagentAsset.id == asset_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
 
-    if asset.price > 0:
+    is_creator = asset.creator_id == user_id
+    has_purchased = db.query(Trade).filter(
+        Trade.asset_id == asset_id, Trade.buyer_id == user_id
+    ).first() is not None
+
+    if asset.price > 0 and not is_creator and not has_purchased:
         raise HTTPException(
             status_code=400,
-            detail="This asset has a price. Use the /trade/purchase endpoint instead.",
+            detail="This asset has a price. Use /trades/purchase first.",
         )
 
-    asset.download_count += 1
-    asset.usage_count += 1
-    _recompute_score(asset)
-    db.commit()
-    db.refresh(asset)
-    return asset
+    if not asset.archive_path or not os.path.exists(asset.archive_path):
+        raise HTTPException(status_code=404, detail="Archive not found on disk")
 
+    # Increment counters (only for non-creators)
+    if not is_creator:
+        asset.download_count += 1
+        asset.usage_count += 1
+        _recompute_score(asset)
+        db.commit()
 
-# ---- My Assets ------------------------------------------------------------
-
-@router.get("/me/published", response_model=list[AssetBriefResponse])
-def my_assets(
-    user_id: str = Depends(get_current_user_id),
-    db: Session = Depends(get_db),
-):
-    """List assets published by the current user."""
-    return db.query(SubagentAsset).filter(SubagentAsset.creator_id == user_id).all()
+    return FileResponse(
+        path=asset.archive_path,
+        media_type="application/zip",
+        filename=f"{asset.name}.zip",
+    )
 
 
 # ---- Helpers --------------------------------------------------------------
@@ -253,6 +477,8 @@ def _estimate_quality(code: str, skill_md: str, description: str) -> float:
     In production this would be an AI review step.
     """
     score = 0.0
+    if not code:
+        return score
     # Has code
     if len(code) > 50:
         score += 0.2

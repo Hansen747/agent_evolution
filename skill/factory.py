@@ -216,31 +216,37 @@ class SubagentFactory:
 
     def export(self, entry_file: str) -> Dict[str, Any]:
         """
-        Export a subagent's code and SKILL.md for publishing.
+        Export a subagent as a zip archive ready for platform upload.
 
         Returns:
-            {"success": True, "code": "...", "skill_md": "...", "entry_file": "..."}
+            {"success": True, "zip_path": "...", "entry_file": "...", "file_list": [...]}
         """
         path = os.path.join(self.workspace, entry_file)
         if not os.path.exists(path):
             return {"success": False, "error": f"File not found: {entry_file}"}
 
-        with open(path, "r", encoding="utf-8") as f:
-            code = f.read()
-
-        # Try to find the matching SKILL.md
         base_name = os.path.splitext(entry_file)[0]
         skill_md_path = os.path.join(self.workspace, f"{base_name}_SKILL.md")
-        skill_md = ""
+
+        # Build zip archive
+        import zipfile
+        zip_path = os.path.join(self.workspace, f"{base_name}.zip")
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            # Add entry file
+            zf.write(path, entry_file)
+            # Add SKILL.md if it exists
+            if os.path.exists(skill_md_path):
+                zf.write(skill_md_path, "SKILL.md")
+
+        file_list = [entry_file]
         if os.path.exists(skill_md_path):
-            with open(skill_md_path, "r", encoding="utf-8") as f:
-                skill_md = f.read()
+            file_list.append("SKILL.md")
 
         return {
             "success": True,
+            "zip_path": zip_path,
             "entry_file": entry_file,
-            "code": code,
-            "skill_md": skill_md,
+            "file_list": file_list,
         }
 
     def cleanup(self, entry_file: Optional[str] = None):

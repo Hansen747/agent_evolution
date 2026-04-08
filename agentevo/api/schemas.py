@@ -77,27 +77,9 @@ class AgentHeartbeatRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # SubagentAsset
 # ---------------------------------------------------------------------------
-class AssetPublishRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=128)
-    description: str = ""
-    tags: List[str] = []
-    entry_file: str = "subagent.py"
-    code: str = Field(..., min_length=1)
-    skill_md: str = ""
-    dependencies: List[str] = []
-    tools_used: List[str] = []
-    price: float = 0.0
-    license_type: str = "MIT"
-    parent_asset_id: Optional[str] = None
-    supersedes_id: Optional[str] = None
-    evolution_note: str = ""
-
-
 class AssetUpdateRequest(BaseModel):
     description: Optional[str] = None
     tags: Optional[List[str]] = None
-    code: Optional[str] = None
-    skill_md: Optional[str] = None
     price: Optional[float] = None
     is_listed: Optional[bool] = None
 
@@ -111,7 +93,7 @@ class AssetResponse(BaseModel):
     description: str
     tags: list
     entry_file: str
-    code: str
+    file_list: list
     skill_md: str
     dependencies: list
     tools_used: list
@@ -136,7 +118,7 @@ class AssetResponse(BaseModel):
 
 
 class AssetBriefResponse(BaseModel):
-    """Lightweight asset listing without full code."""
+    """Lightweight asset listing without full details."""
     id: str
     creator_id: str
     name: str

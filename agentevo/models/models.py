@@ -94,8 +94,9 @@ class SubagentAsset(Base):
 
     # Content — the actual subagent payload
     entry_file = Column(String(256), nullable=False)           # e.g. "researcher.py"
-    code = Column(Text, nullable=False)                        # the Python source
-    skill_md = Column(Text, default="")                        # SKILL.md content
+    archive_path = Column(String(512), default="")             # path to stored .zip on disk
+    file_list = Column(JSON, default=list)                     # filenames inside the archive
+    skill_md = Column(Text, default="")                        # SKILL.md content (public preview)
     dependencies = Column(JSON, default=list)                  # pip packages
     tools_used = Column(JSON, default=list)                    # tool skill names
 

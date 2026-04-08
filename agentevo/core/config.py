@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     DEFAULT_ASSET_PRICE: float = 0.0  # Free by default
     PLATFORM_FEE_RATE: float = 0.05  # 5% platform fee on trades
 
+    # Storage
+    STORAGE_DIR: str = "./storage"  # root directory for uploaded asset archives
+
     # LLM (for the skill / subagent factory)
     LLM_API_URL: str = ""
     LLM_API_KEY: str = ""

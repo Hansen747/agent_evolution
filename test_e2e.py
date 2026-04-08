@@ -4,7 +4,7 @@ End-to-end test for the AgentEvolution platform.
 Tests the full workflow:
   1. Register two users
   2. Register an agent
-  3. Create & publish a subagent asset (via factory + API)
+  3. Create & publish a subagent asset (zip upload)
   4. Search & browse assets
   5. Post a bounty
   6. Submit a solution
@@ -14,12 +14,14 @@ Tests the full workflow:
   10. Record operation logs
 """
 
+import io
 import json
 import time
 import subprocess
 import sys
 import os
 import signal
+import zipfile
 import requests
 
 BASE_URL = "http://localhost:8765"
@@ -37,6 +39,36 @@ def wait_for_server(url, timeout=10):
         except requests.ConnectionError:
             time.sleep(0.3)
     return False
+
+
+def make_zip(files: dict[str, str]) -> bytes:
+    """Create an in-memory zip archive from a dict of {filename: content}."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, content in files.items():
+            zf.writestr(name, content)
+    return buf.getvalue()
+
+
+SUBAGENT_CODE = '''\
+"""Web researcher subagent."""
+import os
+
+def call_llm(system, messages, max_tokens=4000):
+    return "FINAL ANSWER: This is a test answer"
+
+def main(query):
+    """Main entry point."""
+    try:
+        response = call_llm("You are a researcher.", [{"role": "user", "content": query}])
+        answer = response.split("FINAL ANSWER:")[-1].strip() if "FINAL ANSWER:" in response else response
+        summary = call_llm("Summarise.", [{"role": "user", "content": f"Query: {query}, Answer: {answer}"}])
+        return {"answer": answer, "summary": summary}
+    except Exception as e:
+        return {"answer": f"Error: {e}", "summary": str(e)}
+'''
+
+SKILL_MD = "# web_researcher\\nResearch subagent that searches and synthesises web information."
 
 
 def test_full_workflow():
@@ -94,52 +126,53 @@ def test_full_workflow():
     agent_id = agent["id"]
     print(f"    Agent registered: {agent['name']} (id={agent_id}, api_key={agent['api_key'][:16]}...)")
 
-    # ---- 5. Publish subagent asset ----
-    print("\n[5] Publish subagent asset...")
-    subagent_code = '''
-"""Web researcher subagent."""
-import os
-
-def call_llm(system, messages, max_tokens=4000):
-    return "FINAL ANSWER: This is a test answer"
-
-def main(query):
-    """Main entry point."""
-    try:
-        response = call_llm("You are a researcher.", [{"role": "user", "content": query}])
-        answer = response.split("FINAL ANSWER:")[-1].strip() if "FINAL ANSWER:" in response else response
-        summary = call_llm("Summarise.", [{"role": "user", "content": f"Query: {query}, Answer: {answer}"}])
-        return {"answer": answer, "summary": summary}
-    except Exception as e:
-        return {"answer": f"Error: {e}", "summary": str(e)}
-'''
-    r = requests.post(f"{API}/assets/", params={"agent_id": agent_id}, json={
-        "name": "web_researcher",
-        "description": "A general-purpose web research subagent that searches and synthesises information",
-        "tags": ["research", "web", "search"],
-        "entry_file": "web_researcher.py",
-        "code": subagent_code,
-        "skill_md": "# web_researcher\nResearch subagent",
-        "dependencies": ["requests"],
-        "tools_used": ["web_search", "web_reading"],
-        "price": 0.0,
-    }, headers=alice_h)
+    # ---- 5. Publish subagent asset (zip upload) ----
+    print("\n[5] Publish subagent asset (zip upload)...")
+    free_zip = make_zip({
+        "web_researcher.py": SUBAGENT_CODE,
+        "SKILL.md": SKILL_MD,
+    })
+    r = requests.post(
+        f"{API}/assets/",
+        params={"agent_id": agent_id},
+        files={"file": ("web_researcher.zip", free_zip, "application/zip")},
+        data={
+            "name": "web_researcher",
+            "description": "A general-purpose web research subagent that searches and synthesises information",
+            "tags": json.dumps(["research", "web", "search"]),
+            "entry_file": "web_researcher.py",
+            "dependencies": json.dumps(["requests"]),
+            "tools_used": json.dumps(["web_search", "web_reading"]),
+            "price": "0.0",
+        },
+        headers=alice_h,
+    )
     assert r.status_code == 201, f"Publish asset failed: {r.text}"
     asset = r.json()
     free_asset_id = asset["id"]
     print(f"    Asset published: {asset['name']} (id={free_asset_id}, quality={asset['quality_score']:.2f}, composite={asset['composite_score']:.2f})")
+    assert "web_researcher.py" in asset["file_list"]
+    assert "SKILL.md" in asset["file_list"]
+    assert len(asset["skill_md"]) > 0, "SKILL.md should be extracted as public preview"
 
     # Publish a PAID asset
-    r = requests.post(f"{API}/assets/", json={
-        "name": "premium_analyser",
-        "description": "Advanced data analysis subagent with ML capabilities",
-        "tags": ["analysis", "ml", "premium"],
-        "entry_file": "analyser.py",
-        "code": subagent_code,
-        "skill_md": "# premium_analyser\nPremium analyser",
-        "price": 10.0,
-    }, headers=alice_h)
-    assert r.status_code == 201
+    paid_zip = make_zip({
+        "analyser.py": SUBAGENT_CODE,
+        "SKILL.md": "# premium_analyser\nPremium analyser with ML capabilities",
+    })
+    r = requests.post(
+        f"{API}/assets/",
+        files={"file": ("analyser.zip", paid_zip, "application/zip")},
+        data={
+            "name": "premium_analyser",
+            "description": "Advanced data analysis subagent with ML capabilities",
+            "tags": json.dumps(["analysis", "ml", "premium"]),
+            "entry_file": "analyser.py",
+            "price": "10.0",
+        },
+        headers=alice_h,
+    )
+    assert r.status_code == 201, f"Publish paid asset failed: {r.text}"
     paid_asset_id = r.json()["id"]
     print(f"    Paid asset published: premium_analyser (id={paid_asset_id}, price=10.0)")
 
@@ -160,13 +193,17 @@ def main(query):
     r = requests.get(f"{API}/assets/{free_asset_id}")
     assert r.status_code == 200
     detail = r.json()
-    print(f"    Asset detail: {detail['name']}, code length={len(detail['code'])}")
+    print(f"    Asset detail: {detail['name']}, file_list={detail['file_list']}, skill_md_len={len(detail['skill_md'])}")
 
     # ---- 8. Download free asset (Bob) ----
     print("\n[8] Download free asset...")
     r = requests.post(f"{API}/assets/{free_asset_id}/download", headers=bob_h)
     assert r.status_code == 200
-    print(f"    Bob downloaded: {r.json()['name']}, usage_count={r.json()['usage_count']}")
+    assert r.headers.get("content-type", "").startswith("application/zip") or "zip" in r.headers.get("content-type", "")
+    # Verify it's a valid zip with the expected files
+    zf = zipfile.ZipFile(io.BytesIO(r.content))
+    assert "web_researcher.py" in zf.namelist()
+    print(f"    Bob downloaded zip: {len(r.content)} bytes, files={zf.namelist()}")
 
     # ---- 9. Rate asset ----
     print("\n[9] Rate asset...")
@@ -236,6 +273,19 @@ def main(query):
     r = requests.get(f"{API}/auth/me", headers=alice_h)
     print(f"    Alice credits after sale: {r.json()['credits']}")
 
+    # ---- 14b. Download purchased paid asset (Bob) ----
+    print("\n[14b] Download purchased paid asset...")
+    r = requests.post(f"{API}/assets/{paid_asset_id}/download", headers=bob_h)
+    assert r.status_code == 200, f"Download paid asset failed: {r.status_code}"
+    print(f"    Bob downloaded paid asset zip: {len(r.content)} bytes")
+
+    # ---- 14c. View file from asset (Bob — purchased) ----
+    print("\n[14c] View file from asset...")
+    r = requests.get(f"{API}/assets/{paid_asset_id}/files/analyser.py", headers=bob_h)
+    assert r.status_code == 200, f"View file failed: {r.status_code}"
+    print(f"    File content length: {len(r.text)} chars")
+    assert "def main(" in r.text
+
     # ---- 15. Trade history ----
     print("\n[15] Trade history...")
     r = requests.get(f"{API}/trades/history", headers=bob_h)
@@ -295,7 +345,11 @@ def main(query):
 
     export = factory.export("test_researcher.py")
     assert export["success"]
-    print(f"    Exported: code={len(export['code'])} chars, skill_md={len(export['skill_md'])} chars")
+    assert export["zip_path"].endswith(".zip")
+    # Verify the zip is valid
+    with zipfile.ZipFile(export["zip_path"], "r") as zf:
+        assert "test_researcher.py" in zf.namelist()
+    print(f"    Exported zip: {export['zip_path']}, files={export['file_list']}")
 
     factory.cleanup()
 
@@ -311,6 +365,12 @@ if __name__ == "__main__":
     db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent_evolution.db")
     if os.path.exists(db_path):
         os.remove(db_path)
+
+    # Clean up any old storage
+    storage_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "storage")
+    import shutil
+    if os.path.exists(storage_path):
+        shutil.rmtree(storage_path)
 
     server = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "agentevo.main:app", "--port", "8765", "--log-level", "warning"],
@@ -328,6 +388,8 @@ if __name__ == "__main__":
     finally:
         server.terminate()
         server.wait()
-        # Cleanup test db
+        # Cleanup test db and storage
         if os.path.exists(db_path):
             os.remove(db_path)
+        if os.path.exists(storage_path):
+            shutil.rmtree(storage_path, ignore_errors=True)
