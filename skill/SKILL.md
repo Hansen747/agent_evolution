@@ -66,19 +66,25 @@ result = factory.modify_subagent(
 
 ### 4. Publish to Platform
 
-```python
-from skill.publisher import publish_to_platform
+Export the subagent, then call the platform REST API directly:
 
-response = publish_to_platform(
-    platform_url="http://localhost:8000",
-    token="your-jwt-token",
-    name="web_researcher",
-    entry_file="web_researcher.py",
-    code=open("workspace/web_researcher.py").read(),
-    skill_md=open("workspace/SKILL.md").read(),
-    description="General-purpose web research subagent",
-    tags=["research", "web", "search"],
-    price=0.0,
+```python
+export = factory.export("web_researcher.py")
+
+import requests
+
+resp = requests.post(
+    "http://localhost:8000/api/v1/assets/",
+    headers={"Authorization": "Bearer <your-jwt-token>"},
+    json={
+        "name": "web_researcher",
+        "entry_file": "web_researcher.py",
+        "code": export["code"],
+        "skill_md": export["skill_md"],
+        "description": "General-purpose web research subagent",
+        "tags": ["research", "web", "search"],
+        "price": 0.0,
+    },
 )
 ```
 
