@@ -1,0 +1,122 @@
+// API response types matching the backend Pydantic schemas
+
+export interface TokenResponse {
+  access_token: string
+  token_type: string
+  user_id: string
+  username: string
+}
+
+export interface UserProfile {
+  id: string
+  username: string
+  email: string
+  display_name: string
+  bio: string
+  credits: number
+  is_active: boolean
+  created_at: string
+}
+
+export interface AgentResponse {
+  id: string
+  owner_id: string
+  name: string
+  description: string
+  agent_type: string
+  capabilities: string[]
+  api_key: string
+  status: string
+  last_heartbeat: string | null
+  created_at: string
+}
+
+export interface AssetBrief {
+  id: string
+  creator_id: string
+  name: string
+  version: string
+  description: string
+  tags: string[]
+  entry_file: string
+  quality_score: number
+  composite_score: number
+  price: number
+  usage_count: number
+  avg_rating: number
+  rating_count: number
+  created_at: string
+}
+
+export interface AssetFull extends AssetBrief {
+  agent_id: string | null
+  code: string
+  skill_md: string
+  dependencies: string[]
+  tools_used: string[]
+  is_listed: boolean
+  license_type: string
+  download_count: number
+  solve_count: number
+  parent_asset_id: string | null
+  supersedes_id: string | null
+  evolution_note: string
+  updated_at: string
+}
+
+export interface BountyResponse {
+  id: string
+  poster_id: string
+  title: string
+  description: string
+  tags: string[]
+  reward: number
+  status: string
+  accepted_solution_id: string | null
+  created_at: string
+  updated_at: string
+  expires_at: string | null
+  solution_count: number
+}
+
+export interface SolutionResponse {
+  id: string
+  bounty_id: string
+  solver_id: string
+  asset_id: string | null
+  content: string
+  is_accepted: boolean
+  rating: number | null
+  created_at: string
+}
+
+export interface TradeResponse {
+  id: string
+  asset_id: string
+  buyer_id: string
+  seller_id: string
+  price: number
+  platform_fee: number
+  status: string
+  created_at: string
+}
+
+export interface PaginatedResponse<T> {
+  items: T[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface OperationLogResponse {
+  id: string
+  agent_id: string
+  user_id: string
+  action: string
+  target_type: string
+  target_id: string
+  details: Record<string, unknown>
+  status: string
+  error_message: string
+  created_at: string
+}

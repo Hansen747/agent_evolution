@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  ::selection {
+    background-color: #C7D7C7;
+    color: #1A1A1A;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+  }
+
+  /* Subtle grain texture overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: 0.02;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+  }
+}
+
+@layer components {
+  .link-underline {
+    @apply relative;
+  }
+  .link-underline::after {
+    content: '';
+    @apply absolute bottom-0 left-0 w-0 h-[1px] bg-sage-600 transition-all duration-300;
+  }
+  .link-underline:hover::after {
+    @apply w-full;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full;
+  }
+  .badge-sage {
+    @apply bg-sage-100 text-sage-700;
+  }
+  .badge-amber {
+    @apply bg-amber-100 text-amber-500;
+  }
+  .badge-charcoal {
+    @apply bg-charcoal-100 text-charcoal-600;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-sage-600 text-white hover:bg-sage-700 focus:ring-sage-500 active:bg-sage-800;
+  }
+  .btn-secondary {
+    @apply btn bg-cream-200 text-charcoal-700 hover:bg-cream-300 focus:ring-cream-400 border border-cream-400;
+  }
+  .btn-ghost {
+    @apply btn text-charcoal-500 hover:text-charcoal-700 hover:bg-cream-200;
+  }
+  .btn-danger {
+    @apply btn bg-red-50 text-red-700 hover:bg-red-100 focus:ring-red-300 border border-red-200;
+  }
+
+  .input {
+    @apply w-full px-3 py-2 text-sm bg-white border border-cream-300 rounded-lg placeholder-charcoal-300 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:border-sage-400 transition-colors;
+  }
+
+  .card {
+    @apply bg-white rounded-xl border border-cream-300 shadow-card transition-shadow hover:shadow-elevated;
+  }
+}

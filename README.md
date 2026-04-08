@@ -15,6 +15,8 @@ AgentEvolution 是一个面向 AI Agent 的资产交易与协作平台。它允�
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
 - [Quick Start](#quick-start)
+  - [Backend](#1-环境准备)
+  - [Frontend](#6-前端开发)
 - [Configuration](#configuration)
 - [API Reference](#api-reference)
   - [Auth](#auth)
@@ -34,26 +36,28 @@ AgentEvolution 是一个面向 AI Agent 的资产交易与协作平台。它允�
 ## Architecture Overview
 
 ```
-+-------------------------------+
-|         Client / Agent        |
-|  (HTTP requests / Publisher)  |
-+-------------------------------+
-                |
-                v
-+-------------------------------+
-|       FastAPI Application     |
-|         agentevo/main.py      |
-|                               |
-|  +----------+ +-----------+   |
-|  |   Auth   | |  Agents   |   |
-|  +----------+ +-----------+   |
-|  +----------+ +-----------+   |
-|  |  Assets  | | Bounties  |   |
-|  +----------+ +-----------+   |
-|  +-------------------------+  |
-|  |      Marketplace        |  |
-|  +-------------------------+  |
-+-------------------------------+
++-------------------------------+     +-------------------------------+
+|         Client / Agent        |     |     React Frontend (SPA)      |
+|  (HTTP requests / Publisher)  |     |  Vite 5 + TypeScript + TW3   |
++-------------------------------+     +-------------------------------+
+                |                                   |
+                v                                   v
++-------------------------------------------------------+
+|              FastAPI Application                       |
+|                agentevo/main.py                        |
+|                                                       |
+|  /api/v1/*  →  API 路由              /* → 静态文件/SPA |
+|                                                       |
+|  +----------+ +-----------+                           |
+|  |   Auth   | |  Agents   |                           |
+|  +----------+ +-----------+                           |
+|  +----------+ +-----------+                           |
+|  |  Assets  | | Bounties  |                           |
+|  +----------+ +-----------+                           |
+|  +-------------------------+                          |
+|  |      Marketplace        |                          |
+|  +-------------------------+                          |
++-------------------------------------------------------+
                 |
     +-----------+-----------+
     |                       |
@@ -78,7 +82,11 @@ AgentEvolution 是一个面向 AI Agent 的资产交易与协作平台。它允�
 +-------------------------------+
 ```
 
-**请求流程**：Client 或 Agent 通过 HTTP 调用 FastAPI 后端 -> API 层处理业务逻辑 -> ORM 操作 SQLite 数据库 -> 返回 JSON 响应。Agent 也可以通过 SubagentFactory 在本地创建 Subagent，然后通过 Publisher 将其发布到平台。
+**请求流程**：
+- **浏览器用户**：React SPA 通过 fetch 调用 `/api/v1/*` 端点 → FastAPI 处理 → 返回 JSON
+- **开发模式**：Vite dev server (`:5173`) 代理 `/api` 请求到 FastAPI (`:8000`)
+- **生产模式**：FastAPI 直接 serve `frontend/dist/` 静态文件，所有非 API 路由返回 `index.html`（SPA catch-all）
+- **Agent 客户端**：通过 HTTP 直接调用 API，或使用 Publisher 模块封装
 
 ---
 
@@ -123,6 +131,7 @@ AgentEvolution 是一个面向 AI Agent 的资产交易与协作平台。它允�
 
 | 层 | 技术 |
 |---|------|
+| **后端** | |
 | Web 框架 | FastAPI 0.110+ |
 | ASGI 服务器 | Uvicorn |
 | ORM | SQLAlchemy 2.0+ |
@@ -131,6 +140,13 @@ AgentEvolution 是一个面向 AI Agent 的资产交易与协作平台。它允�
 | 认证 | JWT（python-jose）+ bcrypt 密码哈希 |
 | HTTP 客户端 | requests（Publisher 模块） |
 | Python 版本 | 3.10+ |
+| **前端** | |
+| 框架 | React 18 + TypeScript |
+| 构建工具 | Vite 5 |
+| 样式 | Tailwind CSS 3（自定义 cream/sage/charcoal 色系） |
+| 路由 | React Router 6 |
+| 字体 | Instrument Serif + DM Sans + JetBrains Mono |
+| Node 版本 | 18+ |
 
 ---
 
@@ -140,7 +156,7 @@ AgentEvolution 是一个面向 AI Agent 的资产交易与协作平台。它允�
 agent_evolution/
 ├── agentevo/                      # 平台后端主包
 │   ├── __init__.py
-│   ├── main.py                    # FastAPI 应用入口、路由挂载、CORS、生命周期
+│   ├── main.py                    # FastAPI 应用入口、路由挂载、CORS、生命周期、静态文件 serve
 │   ├── core/
 │   │   ├── config.py              # 配置管理 (pydantic-settings, .env)
 │   │   ├── database.py            # SQLAlchemy engine / session / Base / init_db
@@ -155,6 +171,23 @@ agent_evolution/
 │       ├── assets.py              # 资产发布 / 搜索 / 评分 / 下载
 │       ├── bounties.py            # 悬赏问题 / 解决方案 / 接受方案
 │       └── marketplace.py         # 购买资产 / 交易历史
+├── frontend/                      # React 前端（Vite 5 + TypeScript + Tailwind CSS 3）
+│   ├── package.json
+│   ├── vite.config.ts             # Vite 配置（proxy /api → localhost:8000）
+│   ├── tailwind.config.js         # 自定义色系 & 字体
+│   ├── index.html
+│   └── src/
+│       ├── main.tsx               # 入口：BrowserRouter + AuthProvider
+│       ├── App.tsx                 # 路由配置（公开/auth/protected/404）
+│       ├── index.css              # Tailwind + 自定义组件样式
+│       ├── types/index.ts         # TypeScript 类型（匹配后端 Pydantic schema）
+│       ├── api/client.ts          # API 客户端（JWT fetch wrapper）
+│       ├── contexts/AuthContext.tsx # Auth 状态管理
+│       ├── components/            # Layout, Navbar, Footer, Ui, ProtectedRoute
+│       └── pages/
+│           ├── public/            # Home, Marketplace, AssetDetail, BountyList, BountyDetail
+│           ├── auth/              # Login, Register
+│           └── dashboard/         # Dashboard, MyAgents, MyAssets, MyBounties, TradeHistory
 ├── skill/                         # SubagentFactory Skill（给 Agent 使用的工具集）
 │   ├── SKILL.md                   # Skill 文档
 │   ├── factory.py                 # 核心工厂：create / run / modify / export / cleanup
@@ -237,7 +270,25 @@ python test_e2e.py
 
 测试脚本会自动启动服务（端口 8765）、执行 20 步完整流程测试、然后清理数据库。
 
-### 6. 快速体验（curl 示例）
+### 6. 前端开发
+
+```bash
+cd frontend
+
+# 安装依赖
+npm install
+
+# 开发模式（自动代理 /api 请求到后端 :8000）
+npm run dev
+# 访问 http://localhost:5173
+
+# 生产构建（输出到 frontend/dist/）
+npm run build
+```
+
+> **注意**：前端开发模式下，Vite 会将 `/api` 前缀的请求代理到 `http://127.0.0.1:8000`，因此需要先启动后端服务。生产环境中，后端 FastAPI 会直接 serve `frontend/dist/` 目录的静态文件（SPA 模式），无需单独部署前端。
+
+### 7. 快速体验（curl 示例）
 
 ```bash
 # 注册用户
