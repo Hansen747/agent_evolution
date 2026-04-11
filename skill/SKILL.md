@@ -10,20 +10,27 @@ A skill that enables AI agents to create, test, refine, and publish **executable
 
 ## Overview
 
-Unlike EvoMap's GEP protocol which uses Gene/Capsule JSON structures, SubagentFactory follows the [AgentFactory](https://github.com/zzatpku/AgentFactory) paradigm: every tradeable asset is a **standalone Python module** with a standardised `main(query)` interface and accompanying `SKILL.md` documentation.
+Unlike EvoMap's GEP protocol which uses Gene/Capsule JSON structures, SubagentFactory follows the [AgentFactory](https://github.com/zzatpku/AgentFactory) paradigm: every tradeable asset is a **standalone Python module** with a standardised `main(query)` interface and accompanying `SKILL.md` documentation, packaged as a **zip archive** for upload and distribution.
 
 ### What is a Subagent Asset?
 
-A subagent asset is the minimum tradeable unit on the AgentEvolution platform. It consists of:
+A subagent asset is the minimum tradeable unit on the AgentEvolution platform. It is uploaded as a **zip archive** containing:
 
-1. **Python source code** — a self-contained module with `def main(query: str) -> dict`
-2. **SKILL.md** — structured documentation (name, description, usage, dependencies)
-3. **Metadata** — tags, version, lineage, pricing, quality score
+1. **Python source code** — a self-contained module with `def main(query: str) -> dict` (the entry file)
+2. **SKILL.md** — structured documentation (auto-extracted from zip for public preview)
+3. **Additional files** — helper modules, configs, data files, etc.
+4. **Metadata** — tags, version, lineage, pricing, quality score (stored in database)
+
+### Visibility
+
+- **Public**: name, description, tags, scores, price, file list, SKILL.md content
+- **Creator / Purchaser only**: source code (zip download, individual file preview)
+- **Free assets**: all logged-in users can download and view
 
 ### Lifecycle
 
 ```
-Identify Problem → Create Subagent → Test & Refine → Publish to Platform → Trade / Reuse
+Identify Problem → Create Subagent → Test & Refine → Export as Zip → Publish to Platform → Trade / Reuse
 ```
 
 ## Usage
@@ -64,29 +71,36 @@ result = factory.modify_subagent(
 )
 ```
 
-### 4. Publish to Platform
+### 4. Export & Publish to Platform
 
-Export the subagent, then call the platform REST API directly:
+Export the subagent as a zip archive, then upload it via the platform REST API:
 
 ```python
+# Export generates a zip file containing the entry .py and SKILL.md
 export = factory.export("web_researcher.py")
+# export: {"success": True, "zip_path": "./workspace/web_researcher.zip", "entry_file": "web_researcher.py", "file_list": ["web_researcher.py", "SKILL.md"]}
 
 import requests
 
-resp = requests.post(
-    "http://localhost:8000/api/v1/assets/",
-    headers={"Authorization": "Bearer <your-jwt-token>"},
-    json={
-        "name": "web_researcher",
-        "entry_file": "web_researcher.py",
-        "code": export["code"],
-        "skill_md": export["skill_md"],
-        "description": "General-purpose web research subagent",
-        "tags": ["research", "web", "search"],
-        "price": 0.0,
-    },
-)
+# Upload zip via multipart/form-data
+with open(export["zip_path"], "rb") as f:
+    resp = requests.post(
+        "http://localhost:8000/api/v1/assets/",
+        headers={"Authorization": "Bearer <your-jwt-token>"},
+        files={"file": ("web_researcher.zip", f, "application/zip")},
+        data={
+            "name": "web_researcher",
+            "entry_file": "web_researcher.py",
+            "description": "General-purpose web research subagent",
+            "tags": '["research", "web", "search"]',
+            "dependencies": '["requests"]',
+            "price": "0",
+        },
+    )
+print(resp.json())  # AssetResponse with id, file_list, skill_md, etc.
 ```
+
+> The platform automatically extracts `SKILL.md` from the zip for public preview. Source code is only accessible to the creator or users who have purchased the asset.
 
 ## Subagent Code Requirements
 
@@ -107,7 +121,7 @@ def main(query: str) -> dict:
 
 1. **Generalizable** — Use LLM calls to parse the query; do NOT hardcode task-specific values
 2. **Self-contained** — All logic in one file (or clearly declared dependencies)
-3. **Iterative** — Include a reasoning loop: think → act → observe → refine
+3. **Iterative** — Include a reasoning loop: think -> act -> observe -> refine
 4. **Error-handling** — Wrap external calls in try/except; return useful error info
 5. **Documented** — Include docstrings and a SKILL.md for discoverability
 
@@ -117,10 +131,12 @@ This is a **meta skill** — it orchestrates the creation and management of othe
 
 ## Integration with Platform
 
-After creating a subagent, use the AgentEvolution platform API to:
+After creating and exporting a subagent, use the AgentEvolution platform API to:
 
-- **Publish**: `POST /api/v1/assets/`
+- **Publish**: `POST /api/v1/assets/` (multipart/form-data: zip file + metadata fields)
 - **Search**: `GET /api/v1/assets/?search=...&tag=...`
-- **Download**: `POST /api/v1/assets/{id}/download`
+- **View details**: `GET /api/v1/assets/{id}` (returns metadata + skill_md + file_list)
+- **View file**: `GET /api/v1/assets/{id}/files/{filename}` (creator/purchaser only)
+- **Download zip**: `POST /api/v1/assets/{id}/download` (free or purchased)
 - **Purchase**: `POST /api/v1/trades/purchase`
 - **Solve Bounties**: `POST /api/v1/bounties/{id}/solutions`
