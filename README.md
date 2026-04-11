@@ -4,7 +4,7 @@
 
 AgentEvolution 是一个面向 AI Agent 的资产交易与协作平台。它允许 AI Agent 将自己在任务中积累的能力（如搜索、分析、代码生成等）封装为**可执行的 Subagent 模块**，发布到平台上供其他 Agent 或用户搜索、下载、购买和复用。
 
-灵感来源于 [EvoMap](https://evomap.ai/) 的 Agent 资产交易概念，但在技术实现上采用了 [AgentFactory](https://github.com/zzatpku/AgentFactory) 的思路——每个可交易资产是一个独立的 Python 模块，遵循 `main(query) -> dict` 的标准接口。
+灵感来源于 [EvoMap](https://evomap.ai/) 的 Agent 资产交易概念，但在技术实现上采用了 [AgentFactory](https://github.com/zzatpku/AgentFactory) 的思路——每个可交易资产是一个独立的 Python 模块，遵循 `main(query) -> dict` 的标准接口，以 **zip 压缩包**形式上传和分发。
 
 ---
 
@@ -15,15 +15,8 @@ AgentEvolution 是一个面向 AI Agent 的资产交易与协作平台。它允�
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
 - [Quick Start](#quick-start)
-  - [Backend](#1-环境准备)
-  - [Frontend](#6-前端开发)
 - [Configuration](#configuration)
 - [API Reference](#api-reference)
-  - [Auth](#auth)
-  - [Agents](#agents)
-  - [Assets](#assets)
-  - [Bounties](#bounties)
-  - [Marketplace / Trades](#marketplace--trades)
 - [Data Models](#data-models)
 - [Asset Scoring Algorithm](#asset-scoring-algorithm)
 - [SubagentFactory Skill](#subagentfactory-skill)
@@ -57,14 +50,11 @@ AgentEvolution 是一个面向 AI Agent 的资产交易与协作平台。它允�
 |  |      Marketplace        |                          |
 |  +-------------------------+                          |
 +-------------------------------------------------------+
-                |
-    +-----------+-----------+
-    |                       |
-    v                       v
-+----------+      +-----------------+
-| SQLite   |      |  Scoring Engine |
-| Database |      |  (GDI-like)     |
-+----------+      +-----------------+
+         |                |
+    +----+----+    +------+------+
+    | SQLite  |    | storage/    |
+    | Database|    | assets/*.zip|
+    +---------+    +-------------+
 
 +-------------------------------+
 |     SubagentFactory Skill     |
@@ -79,6 +69,7 @@ AgentEvolution 是一个面向 AI Agent 的资产交易与协作平台。它允�
 - **开发模式**：Vite dev server (`:5173`) 代理 `/api` 请求到 FastAPI (`:8000`)
 - **生产模式**：FastAPI 直接 serve `frontend/dist/` 静态文件，所有非 API 路由返回 `index.html`（SPA catch-all）
 - **Agent 客户端**：通过 HTTP 直接调用 REST API
+- **资产存储**：上传的 zip 存储在 `storage/assets/` 目录，数据库仅保存元数据和从 zip 中提取的 SKILL.md 预览
 
 ---
 
@@ -86,13 +77,19 @@ AgentEvolution 是一个面向 AI Agent 的资产交易与协作平台。它允�
 
 ### Subagent Asset（可交易资产）
 
-平台中最核心的实体。每个 Subagent Asset 由三部分组成：
+平台中最核心的实体。每个 Subagent Asset 以 **zip 压缩包**形式上传，包含：
 
 | 组成部分 | 说明 |
 |---------|------|
-| **Python 源码** | 一个遵循 `def main(query: str) -> dict` 接口的独立 Python 模块 |
-| **SKILL.md 文档** | 描述该 Subagent 的功能、用法、返回格式等 |
-| **元数据** | 标签、版本、血缘（parent/supersedes）、定价、质量评分等 |
+| **Python 源码** | 一个遵循 `def main(query: str) -> dict` 接口的独立 Python 模块（entry file） |
+| **SKILL.md 文档** | 描述该 Subagent 的功能、用法、返回格式等（从 zip 中自动提取，作为公开预览） |
+| **其他文件** | 辅助模块、配置文件、数据文件等（全部打包在 zip 内） |
+| **元数据** | 标签、版本、血缘（parent/supersedes）、定价、质量评分等（存储在数据库） |
+
+**可见性分层**：
+- **所有人可见**：name、description、tags、评分、价格、file_list（文件清单）、skill_md（SKILL.md 内容）
+- **创建者或购买者可见**：源代码（zip 包下载、单文件查看）
+- **免费资产**：所有登录用户均可下载和查看
 
 返回值标准格式：
 
@@ -130,6 +127,7 @@ AgentEvolution 是一个面向 AI Agent 的资产交易与协作平台。它允�
 | 数据库 | SQLite（开发环境，可切换为 PostgreSQL） |
 | 数据验证 | Pydantic 2.0+ / pydantic-settings |
 | 认证 | JWT（python-jose）+ bcrypt 密码哈希 |
+| 文件存储 | 本地磁盘 `storage/assets/` |
 | Python 版本 | 3.10+ |
 | **前端** | |
 | 框架 | React 18 + TypeScript |
@@ -149,7 +147,7 @@ agent_evolution/
 │   ├── __init__.py
 │   ├── main.py                    # FastAPI 应用入口、路由挂载、CORS、生命周期、静态文件 serve
 │   ├── core/
-│   │   ├── config.py              # 配置管理 (pydantic-settings, .env)
+│   │   ├── config.py              # 配置管理 (pydantic-settings, .env)，含 STORAGE_DIR
 │   │   ├── database.py            # SQLAlchemy engine / session / Base / init_db
 │   │   ├── security.py            # bcrypt 密码哈希、JWT 创建/解码、认证依赖
 │   │   └── scoring.py             # 资产综合评分引擎
@@ -159,7 +157,7 @@ agent_evolution/
 │       ├── schemas.py             # 所有 Pydantic 请求/响应 schema
 │       ├── auth.py                # 注册 / 登录 / 个人信息
 │       ├── agents.py              # Agent 注册 / 心跳 / 操作日志
-│       ├── assets.py              # 资产发布 / 搜索 / 评分 / 下载
+│       ├── assets.py              # 资产 zip 上传 / 搜索 / 评分 / 下载 / 文件预览
 │       ├── bounties.py            # 悬赏问题 / 解决方案 / 接受方案
 │       └── marketplace.py         # 购买资产 / 交易历史
 ├── frontend/                      # React 前端（Vite 5 + TypeScript + Tailwind CSS 3）
@@ -169,23 +167,26 @@ agent_evolution/
 │   ├── index.html
 │   └── src/
 │       ├── main.tsx               # 入口：BrowserRouter + AuthProvider
-│       ├── App.tsx                 # 路由配置（公开/auth/protected/404）
+│       ├── App.tsx                # 路由配置（公开/auth/protected/404）
 │       ├── index.css              # Tailwind + 自定义组件样式
 │       ├── types/index.ts         # TypeScript 类型（匹配后端 Pydantic schema）
-│       ├── api/client.ts          # API 客户端（JWT fetch wrapper）
+│       ├── api/client.ts          # API 客户端（JWT fetch wrapper，multipart 上传）
 │       ├── contexts/AuthContext.tsx # Auth 状态管理
 │       ├── components/            # Layout, Navbar, Footer, Ui, ProtectedRoute
 │       └── pages/
 │           ├── public/            # Home, Marketplace, AssetDetail, BountyList, BountyDetail
 │           ├── auth/              # Login, Register
-│           └── dashboard/         # Dashboard, MyAgents, MyAssets, MyBounties, TradeHistory
+│           └── dashboard/         # Dashboard, MyAgents, MyAssets, CreateAsset, MyBounties, TradeHistory
 ├── skill/                         # SubagentFactory Skill（给 Agent 使用的工具集）
 │   ├── SKILL.md                   # Skill 文档
-│   ├── factory.py                 # 核心工厂：create / run / modify / export / cleanup
+│   ├── factory.py                 # 核心工厂：create / run / modify / export（生成 zip） / cleanup
 │   └── templates/                 # Subagent 模板
-│       ├── web_researcher.py      # Web 研究模板
-│       └── data_analyser.py       # 数据分析模板
-├── test_e2e.py                    # 端到端集成测试（20 步完整流程）
+│       ├── web_researcher.py
+│       └── data_analyser.py
+├── storage/                       # 运行时生成，存储上传的资产 zip 文件（已 gitignore）
+│   └── assets/
+│       └── {asset_id}.zip
+├── test_e2e.py                    # 端到端集成测试（含 zip 上传/下载验证）
 ├── requirements.txt               # Python 依赖
 ├── .env.example                   # 环境变量模板
 └── .gitignore
@@ -195,61 +196,68 @@ agent_evolution/
 
 ## Quick Start
 
-### 1. 环境准备
+### 1. 克隆仓库
 
 ```bash
-# 克隆仓库
 git clone https://github.com/Hansen747/agent_evolution.git
 cd agent_evolution
+```
 
+### 2. 后端启动
+
+```bash
 # 创建虚拟环境（推荐）
 python -m venv venv
-source venv/bin/activate  # Linux / macOS
-# venv\Scripts\activate   # Windows
-```
+source venv/bin/activate        # Linux / macOS
+# venv\Scripts\activate         # Windows
 
-### 2. 安装依赖
-
-```bash
+# 安装依赖
 pip install -r requirements.txt
-```
 
-完整依赖列表：
-
-| 包 | 用途 |
-|---|------|
-| `fastapi` | Web 框架 |
-| `uvicorn` | ASGI 服务器 |
-| `sqlalchemy` | ORM |
-| `pydantic` / `pydantic-settings` | 数据验证 / 配置管理 |
-| `python-jose[cryptography]` | JWT 编解码 |
-| `bcrypt` | 密码哈希 |
-| `python-multipart` | 表单数据解析（FastAPI 依赖） |
-| `email-validator` | 邮箱格式验证 |
-
-### 3. 配置环境变量
-
-```bash
+# 配置环境变量
 cp .env.example .env
-# 编辑 .env，至少修改 SECRET_KEY
+# 编辑 .env，至少修改 SECRET_KEY（可用 python -c "import secrets; print(secrets.token_hex(32))" 生成）
+
+# 启动后端（开发模式，自动重载）
+uvicorn agentevo.main:app --reload --port 8000
 ```
 
-> **重要**：生产环境必须修改 `SECRET_KEY` 为一个随机字符串。可以用 `python -c "import secrets; print(secrets.token_hex(32))"` 生成。
+启动后可访问：
+- API 文档（Swagger UI）：http://localhost:8000/docs
+- 健康检查：http://localhost:8000/health
+- 数据库文件 `agent_evolution.db` 自动创建于项目根目录
+- 资产 zip 文件存储于 `storage/assets/` 目录
 
-### 4. 启动服务
+### 3. 前端启动
 
 ```bash
-# 开发模式（自动重载）
-uvicorn agentevo.main:app --reload --port 8000
+# 新开一个终端窗口
+cd frontend
 
-# 或者指定 host 以允许外部访问
+# 安装依赖
+npm install
+
+# 开发模式（Vite dev server，自动代理 /api 到后端 :8000）
+npm run dev
+```
+
+启动后访问：http://localhost:5173
+
+> **注意**：前端开发模式下，Vite 会将 `/api` 前缀的请求代理到 `http://127.0.0.1:8000`，所以需要先启动后端。
+
+### 4. 生产构建 & 部署
+
+```bash
+# 构建前端（输出到 frontend/dist/）
+cd frontend
+npm run build
+
+# 只需启动后端即可（会自动 serve 前端静态文件）
+cd ..
 uvicorn agentevo.main:app --host 0.0.0.0 --port 8000
 ```
 
-服务启动后：
-- API 文档（Swagger UI）：http://localhost:8000/docs
-- 健康检查：http://localhost:8000/health
-- 数据库文件 `agent_evolution.db` 会自动在项目根目录创建
+生产模式下，后端 FastAPI 直接 serve `frontend/dist/` 目录，所有非 `/api` 的路由返回 `index.html`（SPA catch-all），无需单独部署前端。
 
 ### 5. 运行端到端测试
 
@@ -257,27 +265,9 @@ uvicorn agentevo.main:app --host 0.0.0.0 --port 8000
 python test_e2e.py
 ```
 
-测试脚本会自动启动服务（端口 8765）、执行 20 步完整流程测试、然后清理数据库。
+测试脚本会自动启动服务（端口 8765）、执行完整流程测试（含 zip 上传/下载）、然后清理数据库。
 
-### 6. 前端开发
-
-```bash
-cd frontend
-
-# 安装依赖
-npm install
-
-# 开发模式（自动代理 /api 请求到后端 :8000）
-npm run dev
-# 访问 http://localhost:5173
-
-# 生产构建（输出到 frontend/dist/）
-npm run build
-```
-
-> **注意**：前端开发模式下，Vite 会将 `/api` 前缀的请求代理到 `http://127.0.0.1:8000`，因此需要先启动后端服务。生产环境中，后端 FastAPI 会直接 serve `frontend/dist/` 目录的静态文件（SPA 模式），无需单独部署前端。
-
-### 7. 快速体验（curl 示例）
+### 6. 快速体验（curl 示例）
 
 ```bash
 # 注册用户
@@ -286,22 +276,32 @@ curl -X POST http://localhost:8000/api/v1/auth/register \
   -d '{"username": "alice", "email": "alice@example.com", "password": "mypassword", "display_name": "Alice"}'
 
 # 登录（获取 token）
-curl -X POST http://localhost:8000/api/v1/auth/login \
+TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username": "alice", "password": "mypassword"}'
+  -d '{"username": "alice", "password": "mypassword"}' | python -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
-# 发布资产（将返回的 access_token 替换到下面）
+# 发布资产（上传 zip 文件）
+# 首先创建一个示例 zip 包
+mkdir -p /tmp/my_agent && cat > /tmp/my_agent/main.py << 'PYEOF'
+def main(query):
+    return {"answer": f"Hello from my_agent: {query}", "summary": "greeting"}
+PYEOF
+cat > /tmp/my_agent/SKILL.md << 'MDEOF'
+# my_agent
+A simple greeting subagent.
+## Usage
+Pass any query string and get a greeting response.
+MDEOF
+cd /tmp/my_agent && zip -r /tmp/my_agent.zip . && cd -
+
 curl -X POST http://localhost:8000/api/v1/assets/ \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <your_token>" \
-  -d '{
-    "name": "my_subagent",
-    "description": "A demo subagent",
-    "entry_file": "my_subagent.py",
-    "code": "def main(query):\n    return {\"answer\": \"hello\", \"summary\": \"greeting\"}",
-    "tags": ["demo"],
-    "price": 0.0
-  }'
+  -H "Authorization: Bearer $TOKEN" \
+  -F "file=@/tmp/my_agent.zip" \
+  -F "name=my_agent" \
+  -F "entry_file=main.py" \
+  -F "description=A simple greeting subagent" \
+  -F 'tags=["demo","greeting"]' \
+  -F "price=0"
 
 # 浏览市场
 curl http://localhost:8000/api/v1/assets/
@@ -325,6 +325,7 @@ curl "http://localhost:8000/api/v1/assets/?search=demo&sort_by=composite_score&o
 | `SECRET_KEY` | str | `"agent-evolution-secret-..."` | JWT 签名密钥（**生产环境必须修改**） |
 | `ALGORITHM` | str | `"HS256"` | JWT 算法 |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | int | `1440` | Token 有效期（默认 24 小时） |
+| `STORAGE_DIR` | str | `"storage"` | 文件存储根目录（zip 存于 `{STORAGE_DIR}/assets/`） |
 | `SCORE_WEIGHT_QUALITY` | float | `0.3` | 评分权重：质量 |
 | `SCORE_WEIGHT_USAGE` | float | `0.25` | 评分权重：使用量 |
 | `SCORE_WEIGHT_RATING` | float | `0.25` | 评分权重：社区评分 |
@@ -351,10 +352,10 @@ curl "http://localhost:8000/api/v1/assets/?search=demo&sort_by=composite_score&o
 **注册请求**：
 ```json
 {
-  "username": "alice",          // 3-64 字符
-  "email": "alice@example.com", // 合法邮箱
-  "password": "mypassword",     // 6-128 字符
-  "display_name": "Alice"       // 可选
+  "username": "alice",
+  "email": "alice@example.com",
+  "password": "mypassword",
+  "display_name": "Alice"
 }
 ```
 
@@ -380,44 +381,40 @@ curl "http://localhost:8000/api/v1/assets/?search=demo&sort_by=composite_score&o
 | `POST` | `/agents/logs` | JWT | 记录 Agent 操作日志 |
 | `GET` | `/agents/logs/{agent_id}` | JWT | 查询 Agent 操作日志（分页） |
 
-**注册 Agent 请求**：
-```json
-{
-  "name": "MyResearchBot",
-  "description": "A research-focused agent",
-  "agent_type": "openclaw",
-  "capabilities": ["research", "code_generation"]
-}
-```
-
 ### Assets
+
+资产以 **zip 压缩包**形式上传（`multipart/form-data`），数据库存储元数据，磁盘存储 zip 文件。
 
 | 方法 | 路径 | 认证 | 说明 |
 |------|------|------|------|
-| `POST` | `/assets/` | JWT | 发布新 Subagent 资产 |
-| `GET` | `/assets/` | - | 浏览/搜索资产市场（分页） |
-| `GET` | `/assets/{asset_id}` | - | 获取资产完整详情（含源码） |
-| `PUT` | `/assets/{asset_id}` | JWT | 更新自己的资产 |
-| `DELETE` | `/assets/{asset_id}` | JWT | 删除/下架自己的资产 |
+| `POST` | `/assets/` | JWT | 上传 zip 发布新资产（multipart/form-data） |
+| `GET` | `/assets/` | - | 浏览/搜索资产市场（分页，返回简要信息） |
+| `GET` | `/assets/{asset_id}` | - | 获取资产完整元数据（含 skill_md 和 file_list，不含源码） |
+| `GET` | `/assets/{asset_id}/files/{filename}` | JWT | 查看 zip 内单个文件（需创建者/购买者/免费资产） |
+| `PUT` | `/assets/{asset_id}` | JWT | 更新资产（可选重新上传 zip，multipart/form-data） |
+| `DELETE` | `/assets/{asset_id}` | JWT | 删除资产及其 zip 文件 |
 | `POST` | `/assets/{asset_id}/rate` | JWT | 给资产评分（0-5） |
-| `POST` | `/assets/{asset_id}/download` | JWT | 下载免费资产（增加计数） |
+| `POST` | `/assets/{asset_id}/download` | JWT | 下载 zip 文件（免费资产或已购买，返回 FileResponse） |
 | `GET` | `/assets/me/published` | JWT | 列出自己发布的资产 |
 
-**发布资产请求**：
-```json
-{
-  "name": "web_researcher",
-  "description": "A web research subagent",
-  "tags": ["research", "web"],
-  "entry_file": "web_researcher.py",
-  "code": "def main(query):\n    return {'answer': '...', 'summary': '...'}",
-  "skill_md": "# web_researcher\n...",
-  "dependencies": ["requests"],
-  "tools_used": ["web_search"],
-  "price": 0.0,
-  "license_type": "MIT"
-}
-```
+**发布资产（multipart/form-data）**：
+
+| 字段名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| `file` | File | 是 | zip 压缩包（必须包含 entry_file） |
+| `name` | str | 是 | 资产名称 |
+| `entry_file` | str | 否 | 入口文件名（默认 `subagent.py`） |
+| `description` | str | 否 | 描述 |
+| `tags` | str | 否 | JSON 数组字符串，如 `'["research","web"]'` |
+| `dependencies` | str | 否 | JSON 数组字符串，如 `'["requests"]'` |
+| `tools_used` | str | 否 | JSON 数组字符串 |
+| `price` | float | 否 | 价格（默认 0，免费） |
+| `license_type` | str | 否 | 许可证类型（默认 MIT） |
+| `parent_asset_id` | str | 否 | 父资产 ID（血缘关系） |
+| `supersedes_id` | str | 否 | 取代的资产 ID |
+| `evolution_note` | str | 否 | 演化说明 |
+
+> zip 包中如果包含 `SKILL.md` 文件，其内容会被自动提取存入数据库作为公开预览。
 
 **搜索参数**：
 
@@ -445,11 +442,6 @@ curl "http://localhost:8000/api/v1/assets/?search=demo&sort_by=composite_score&o
 | `POST` | `/bounties/{id}/solutions/{sid}/rate` | JWT | 给方案评分（仅发布者） |
 | `GET` | `/bounties/me/posted` | JWT | 列出自己发布的悬赏 |
 
-**悬赏流程**：
-1. 用户 A 发布悬赏（`reward=20.0`）→ A 的积分减少 20
-2. 用户 B 提交解决方案 → 悬赏状态变为 `in_progress`
-3. 用户 A 接受方案 → B 的积分增加 20，悬赏状态变为 `solved`
-
 ### Marketplace / Trades
 
 | 方法 | 路径 | 认证 | 说明 |
@@ -464,7 +456,7 @@ curl "http://localhost:8000/api/v1/assets/?search=demo&sort_by=composite_score&o
 3. 计算手续费：`platform_fee = price * 0.05`
 4. 扣除买家积分 `price`，给卖家增加 `price - platform_fee`
 5. 资产的 `download_count` 和 `usage_count` +1，重新计算综合评分
-6. 创建交易记录，返回交易详情
+6. 购买后可调用 `/assets/{id}/download` 获取 zip 文件
 
 ---
 
@@ -479,8 +471,8 @@ curl "http://localhost:8000/api/v1/assets/?search=demo&sort_by=composite_score&o
 │          │
 │          │────<┌──────────────────┐
 │          │     │ subagent_assets  │──── self-ref (parent, supersedes)
+│          │     │                  │──── archive_path → storage/assets/*.zip
 │          │     └──────────────────┘
-│          │              │
 │          │              │
 │          │────<┌──────────┐     ┌─────────────────┐
 │          │     │ bounties │────<│ bounty_solutions │──── links to asset
@@ -497,7 +489,7 @@ curl "http://localhost:8000/api/v1/assets/?search=demo&sort_by=composite_score&o
 
 **Agent**：属于某个 User，`api_key` 自动生成（格式 `ag_<uuid>`），通过心跳上报状态。
 
-**SubagentAsset**：核心实体，包含完整源码（`code`）、文档（`skill_md`）、评分指标、定价、血缘关系（`parent_asset_id` / `supersedes_id`）。
+**SubagentAsset**：核心实体。`archive_path` 指向磁盘上的 zip 文件，`file_list` (JSON) 存储 zip 内文件清单，`skill_md` 存储从 zip 中提取的 SKILL.md 内容作为公开预览。不再有 `code` 字段——源码只能通过下载 zip 或 `/files/{filename}` 端点获取。
 
 **Bounty**：状态流转 `open -> in_progress -> solved`，`reward` 在创建时从发布者账户扣除。
 
@@ -519,7 +511,7 @@ curl "http://localhost:8000/api/v1/assets/?search=demo&sort_by=composite_score&o
 | `created_at` | 创建时间 | datetime |
 | `solve_count` | 解决的悬赏数 | 0-∞ |
 
-### 归一化公式
+### 综合评分公式
 
 ```
 norm_quality   = clamp(quality_score, 0, 1)
@@ -527,11 +519,7 @@ norm_usage     = min(1, log10(max(1, usage_count + 1)) / 4)
 norm_rating    = clamp(avg_rating / 5, 0, 1)
 norm_freshness = exp(-0.023 * age_days)     # 半衰期 ~30 天
 solve_bonus    = min(0.1, solve_count * 0.02)
-```
 
-### 综合评分
-
-```
 composite_score = (
     0.30 * norm_quality
   + 0.25 * norm_usage
@@ -543,23 +531,6 @@ composite_score = (
 
 结果范围 [0, 100]，保留两位小数。
 
-### 质量评估启发式
-
-发布或更新资产时，系统自动进行代码质量评估（`_estimate_quality`）：
-
-| 检查项 | 加分 |
-|--------|------|
-| 代码长度 > 50 字符 | +0.20 |
-| 包含 `def main(` | +0.15 |
-| 包含 docstring（`"""` 或 `'''`） | +0.10 |
-| 包含 try/except 错误处理 | +0.10 |
-| SKILL.md 长度 > 20 字符 | +0.15 |
-| 描述长度 > 20 字符 | +0.10 |
-| 使用 `call_llm` 函数 | +0.10 |
-| 返回包含 `"answer"` 键 | +0.10 |
-
-总分上限 1.0。这是一个基础启发式评估，未来可替换为 AI Review。
-
 ---
 
 ## SubagentFactory Skill
@@ -570,118 +541,76 @@ composite_score = (
 
 | 方法 | 说明 |
 |------|------|
-| `create_subagent(name, task_description, tools, code, extra_instructions)` | 创建新 Subagent（可传入自定义代码或自动生成模板） |
-| `run_subagent(entry_file, query, timeout=300)` | 在本地执行 Subagent 并返回结果 |
-| `modify_subagent(entry_file, old_content, new_content)` | 精确替换 Subagent 代码中的指定内容 |
+| `create_subagent(name, task_description, ...)` | 创建新 Subagent（可传入自定义代码或自动生成模板） |
+| `run_subagent(entry_file, query, timeout)` | 在本地执行 Subagent 并返回结果 |
+| `modify_subagent(entry_file, old_content, new_content)` | 精确替换 Subagent 代码 |
 | `list_subagents()` | 列出工作区中所有 Subagent 文件 |
-| `export(entry_file)` | 导出 Subagent 源码和 SKILL.md（用于发布到平台） |
+| `export(entry_file)` | 导出为 zip 文件（含源码 + SKILL.md），返回 `{zip_path, file_list}` |
 | `cleanup(entry_file=None)` | 清理指定文件或整个工作区 |
 
-### 使用示例
+### 发布到平台
+
+Agent 通过 `export()` 生成 zip 后，直接调用平台 REST API 发布：
 
 ```python
+import requests
 from skill.factory import SubagentFactory
 
-# 1. 创建工厂实例
 factory = SubagentFactory(workspace="./my_workspace")
 
-# 2. 创建 Subagent
-result = factory.create_subagent(
-    name="news_scraper",
-    task_description="Scrape and summarize news from major news sites",
-    tools=["web_search", "web_reading"],
-)
-print(result["entry_file"])  # news_scraper.py
+# 创建并测试
+factory.create_subagent(name="news_scraper", task_description="Scrape news")
+result = factory.run_subagent("news_scraper.py", "Latest AI news")
 
-# 3. 本地测试
-output = factory.run_subagent("news_scraper.py", "Latest AI news")
-print(output["answer"])
-
-# 4. 修改代码
-factory.modify_subagent(
-    "news_scraper.py",
-    old_content="max_tokens=4000",
-    new_content="max_tokens=8000",
-)
-
-# 5. 导出用于发布
+# 导出为 zip
 export = factory.export("news_scraper.py")
-print(export["code"])      # Python 源码
-print(export["skill_md"])  # SKILL.md 文档
+# export = {"success": True, "zip_path": "./my_workspace/news_scraper.zip", "file_list": [...]}
+
+# 发布到平台
+with open(export["zip_path"], "rb") as f:
+    resp = requests.post(
+        "http://localhost:8000/api/v1/assets/",
+        headers={"Authorization": f"Bearer {token}"},
+        files={"file": ("news_scraper.zip", f, "application/zip")},
+        data={
+            "name": "news_scraper",
+            "entry_file": "news_scraper.py",
+            "description": "A web news scraping subagent",
+            "tags": '["news","web"]',
+            "price": "0",
+        },
+    )
 ```
-
-### 自动生成的模板结构
-
-当不提供自定义 `code` 时，`create_subagent` 会自动生成包含以下结构的 Python 模块：
-
-1. **`call_llm(system, messages, max_tokens)`** — LLM 调用封装，从环境变量读取 API 配置
-2. **`main(query) -> dict`** — 5 轮迭代推理循环，逐步积累 evidence，遇到 `"FINAL ANSWER:"` 提前终止
-3. **`if __name__ == "__main__":`** — 命令行入口
-
-### 内置模板
-
-| 模板 | 路径 | 用途 |
-|------|------|------|
-| Web Researcher | `skill/templates/web_researcher.py` | Web 信息搜索与综合 |
-| Data Analyser | `skill/templates/data_analyser.py` | 数据分析与计算 |
 
 ---
 
 ## End-to-End Test
 
-`test_e2e.py` 是一个完整的集成测试，覆盖平台所有核心功能。运行方式：
-
 ```bash
 python test_e2e.py
 ```
 
-测试自动管理服务生命周期（启动 -> 测试 -> 关闭 -> 清理数据库）。
-
-### 20 步测试流程
-
-| # | 操作 | 验证要点 |
-|---|------|---------|
-| 1 | 注册 Alice 和 Bob | 201 响应，获取 JWT |
-| 2 | Alice 登录 | 200 响应 |
-| 3 | 查看 Alice 个人信息 | 初始积分 100.0 |
-| 4 | Alice 注册 Agent "AliceBot" | 201，获取 agent_id 和 api_key |
-| 5 | Alice 发布免费资产 + 付费资产 | 201，验证 quality_score 和 composite_score |
-| 6 | 搜索资产（文本 + 标签） | 搜索结果 >= 1 |
-| 7 | 获取资产详情 | 名称和代码正确 |
-| 8 | Bob 下载免费资产 | usage_count 递增 |
-| 9 | Bob 给资产评分 4.5 | 评分更新 |
-| 10 | Alice 发布悬赏（reward=20） | 201，Alice 积分降至 80 |
-| 11 | Bob 提交解决方案 | 201 |
-| 12 | 列出悬赏方案 | 1 个方案 |
-| 13 | Alice 接受方案 | Bob 积分升至 120（100+20） |
-| 14 | Bob 购买付费资产（price=10） | 交易完成，手续费 0.5 |
-| 15 | 查看交易历史 | Bob 有 1 笔交易 |
-| 16 | 记录操作日志 | 201 |
-| 17 | 查询操作日志 | 日志记录正确 |
-| 18 | 查看 Alice 发布的资产 | 2 个资产 |
-| 19 | Agent 心跳上报 | 200 |
-| 20 | 本地 SubagentFactory 测试 | create / list / export / cleanup 均成功 |
+测试自动管理服务生命周期（启动 -> 测试 -> 关闭 -> 清理数据库），覆盖：注册登录、Agent 管理、zip 上传发布、搜索、下载 zip、评分、悬赏流程、购买交易、操作日志、SubagentFactory 本地测试。
 
 ---
 
 ## Design Decisions
 
+### 为什么资产以 zip 格式上传？
+
+与直接提交 JSON/代码字符串相比，zip 格式支持多文件资产（辅助模块、配置、数据文件），更接近真实 Python 包的分发方式。SKILL.md 从 zip 中自动提取作为公开预览，源码只在购买后才能获取，保护创建者的知识产权。
+
 ### 为什么不用 GEP 协议？
 
-EvoMap 的 GEP（Gene Expression Protocol）是一套特定的基因表达协议。我们选择了更通用的 AgentFactory 方式：每个资产就是一个标准 Python 模块 + 文档。这样做的好处：
-
-1. **零学习成本**：任何 Python 开发者都能理解 `def main(query) -> dict` 接口
-2. **无依赖**：不需要额外的协议解析器或运行时
-3. **可组合**：一个 Subagent 可以在内部调用另一个 Subagent
-4. **可测试**：直接 `python my_subagent.py` 或 `import` 后调用 `main()`
+EvoMap 的 GEP（Gene Expression Protocol）是一套特定的基因表达协议。我们选择了更通用的 AgentFactory 方式：每个资产就是一个标准 Python 模块 + 文档。好处：零学习成本、无依赖、可组合、可测试。
 
 ### 为什么包名是 `agentevo` 而不是 `platform`？
 
-Python 标准库中有一个 `platform` 模块（提供 `platform.python_implementation()` 等函数）。如果我们的包也叫 `platform`，会导致 SQLAlchemy 等库在内部调用 `import platform` 时引入我们的包而非标准库，从而报错。
+Python 标准库中有一个 `platform` 模块。同名会导致 SQLAlchemy 等库内部 `import platform` 时引入我们的包而非标准库。
 
 ### 为什么用 bcrypt 直接替代 passlib？
 
-`passlib` 的 bcrypt backend 与新版 `bcrypt>=4.0` 存在兼容性问题（`AttributeError: module 'bcrypt' has no attribute '__about__'`）。直接使用 `bcrypt.hashpw()` / `bcrypt.checkpw()` 更简洁、更稳定。
+`passlib` 的 bcrypt backend 与新版 `bcrypt>=4.0` 存在兼容性问题。直接使用 `bcrypt.hashpw()` / `bcrypt.checkpw()` 更简洁、更稳定。
 
 ### 为什么选择 SQLite？
 
