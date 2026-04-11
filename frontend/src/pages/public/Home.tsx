@@ -1,14 +1,108 @@
 import { Link } from 'react-router-dom'
+import { useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+
+type AgentPlatform = 'openclaw' | 'opencode' | 'claude' | 'manual'
+
+const installCommands: Record<AgentPlatform, { label: string; steps: string[] }> = {
+  openclaw: {
+    label: 'OpenClaw',
+    steps: [
+      '# Install the SubagentFactory skill into your OpenClaw workspace',
+      'mkdir -p ~/.openclaw/skills/subagent-factory',
+      'curl -sL https://raw.githubusercontent.com/Hansen747/agent_evolution/main/skill/SKILL.md \\',
+      '  -o ~/.openclaw/skills/subagent-factory/SKILL.md',
+      'curl -sL https://raw.githubusercontent.com/Hansen747/agent_evolution/main/skill/factory.py \\',
+      '  -o ~/.openclaw/skills/subagent-factory/factory.py',
+      '',
+      '# Verify installation',
+      'openclaw skills list',
+    ],
+  },
+  opencode: {
+    label: 'OpenCode',
+    steps: [
+      '# Install the SubagentFactory skill (global, all projects)',
+      'mkdir -p ~/.agents/skills/subagent-factory',
+      'curl -sL https://raw.githubusercontent.com/Hansen747/agent_evolution/main/skill/SKILL.md \\',
+      '  -o ~/.agents/skills/subagent-factory/SKILL.md',
+      'curl -sL https://raw.githubusercontent.com/Hansen747/agent_evolution/main/skill/factory.py \\',
+      '  -o ~/.agents/skills/subagent-factory/factory.py',
+      '',
+      '# Or install per-project',
+      'mkdir -p .agents/skills/subagent-factory',
+      'curl -sL https://raw.githubusercontent.com/Hansen747/agent_evolution/main/skill/SKILL.md \\',
+      '  -o .agents/skills/subagent-factory/SKILL.md',
+      'curl -sL https://raw.githubusercontent.com/Hansen747/agent_evolution/main/skill/factory.py \\',
+      '  -o .agents/skills/subagent-factory/factory.py',
+    ],
+  },
+  claude: {
+    label: 'Claude Code',
+    steps: [
+      '# Install the SubagentFactory skill for Claude Code',
+      'mkdir -p ~/.claude/skills/subagent-factory',
+      'curl -sL https://raw.githubusercontent.com/Hansen747/agent_evolution/main/skill/SKILL.md \\',
+      '  -o ~/.claude/skills/subagent-factory/SKILL.md',
+      'curl -sL https://raw.githubusercontent.com/Hansen747/agent_evolution/main/skill/factory.py \\',
+      '  -o ~/.claude/skills/subagent-factory/factory.py',
+    ],
+  },
+  manual: {
+    label: 'Manual',
+    steps: [
+      '# Clone the repo and symlink the skill',
+      'git clone https://github.com/Hansen747/agent_evolution.git',
+      '',
+      '# Then symlink to your agent\'s skill directory:',
+      'ln -s $(pwd)/agent_evolution/skill ~/.agents/skills/subagent-factory',
+      '',
+      '# Skill directory layout expected by agents:',
+      '# ~/.agents/skills/subagent-factory/',
+      '#   SKILL.md       <- skill definition (required)',
+      '#   factory.py     <- subagent creation engine',
+      '#   templates/     <- starter templates',
+    ],
+  },
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      onClick={() => {
+        navigator.clipboard.writeText(text)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      }}
+      className="absolute top-3 right-3 p-1.5 rounded-md bg-charcoal-700/50 hover:bg-charcoal-600/60 text-charcoal-300 hover:text-cream-100 transition-colors"
+      title="Copy to clipboard"
+    >
+      {copied ? (
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+      ) : (
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+        </svg>
+      )}
+    </button>
+  )
+}
 
 export default function Home() {
   const { user } = useAuth()
+  const [activePlatform, setActivePlatform] = useState<AgentPlatform>('openclaw')
+
+  const commandText = installCommands[activePlatform].steps
+    .filter((l) => !l.startsWith('#') && l.trim() !== '')
+    .join('\n')
 
   return (
     <div className="animate-fade-in">
       {/* Hero */}
       <section className="relative overflow-hidden">
-        {/* Decorative background */}
         <div className="absolute inset-0 -z-10">
           <div className="absolute top-0 left-1/4 w-96 h-96 bg-sage-100 rounded-full blur-3xl opacity-40" />
           <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-amber-100 rounded-full blur-3xl opacity-30" />
@@ -90,6 +184,104 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Connect Your Agent — Installation Guide */}
+      <section className="bg-charcoal-800 text-cream-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+          <div className="max-w-3xl mx-auto text-center mb-12">
+            <p className="text-sm font-medium text-sage-400 tracking-wide uppercase mb-3">
+              Get Started
+            </p>
+            <h2 className="font-display text-3xl sm:text-4xl text-cream-50 mb-4">
+              Connect your agent in seconds
+            </h2>
+            <p className="text-charcoal-300 leading-relaxed">
+              Install the <span className="font-mono text-sage-400">subagent-factory</span> skill
+              to let your AI agent create, test, and publish executable assets on the marketplace.
+              Compatible with{' '}
+              <span className="text-cream-200">OpenClaw</span>,{' '}
+              <span className="text-cream-200">OpenCode</span>,{' '}
+              <span className="text-cream-200">Claude Code</span>, and any agent
+              that supports the{' '}
+              <a
+                href="https://agentskills.io"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sage-400 underline underline-offset-2 hover:text-sage-300"
+              >
+                AgentSkills
+              </a>{' '}
+              standard.
+            </p>
+          </div>
+
+          {/* Platform tabs */}
+          <div className="max-w-3xl mx-auto">
+            <div className="flex border-b border-charcoal-600 mb-0">
+              {(Object.keys(installCommands) as AgentPlatform[]).map((key) => (
+                <button
+                  key={key}
+                  onClick={() => setActivePlatform(key)}
+                  className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                    activePlatform === key
+                      ? 'border-sage-400 text-sage-400'
+                      : 'border-transparent text-charcoal-400 hover:text-charcoal-200'
+                  }`}
+                >
+                  {installCommands[key].label}
+                </button>
+              ))}
+            </div>
+
+            {/* Code block */}
+            <div className="relative bg-charcoal-900 rounded-b-lg border border-charcoal-700 border-t-0">
+              <CopyButton text={commandText} />
+              <pre className="p-5 overflow-x-auto text-sm leading-relaxed">
+                <code>
+                  {installCommands[activePlatform].steps.map((line, i) => {
+                    if (line.startsWith('#')) {
+                      return (
+                        <span key={i} className="text-charcoal-500">
+                          {line}
+                          {'\n'}
+                        </span>
+                      )
+                    }
+                    if (line.trim() === '') {
+                      return <span key={i}>{'\n'}</span>
+                    }
+                    return (
+                      <span key={i} className="text-cream-200">
+                        {line}
+                        {'\n'}
+                      </span>
+                    )
+                  })}
+                </code>
+              </pre>
+            </div>
+
+            {/* Hint */}
+            <div className="mt-6 flex items-start gap-3 bg-charcoal-700/50 rounded-lg p-4 border border-charcoal-600">
+              <svg className="w-5 h-5 text-sage-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div className="text-sm text-charcoal-300 leading-relaxed">
+                <p className="mb-2">
+                  Once installed, your agent will automatically discover the skill. Ask it:
+                </p>
+                <p className="font-mono text-sage-400 bg-charcoal-800 rounded px-2 py-1 inline-block">
+                  "Use the subagent-factory skill to create a web research agent"
+                </p>
+                <p className="mt-2 text-charcoal-400">
+                  The skill teaches your agent how to create Python modules, test them locally,
+                  export as zip archives, and publish to the marketplace via our REST API.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* How it works */}
       <section className="bg-white/50 border-y border-cream-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
@@ -98,10 +290,26 @@ export default function Home() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             {[
-              { step: '01', title: 'Register', desc: 'Create an account and connect your AI agents.' },
-              { step: '02', title: 'Create', desc: 'Use SubagentFactory to generate executable modules.' },
-              { step: '03', title: 'Publish', desc: 'Upload assets with docs, tags, and pricing.' },
-              { step: '04', title: 'Trade', desc: 'Buy, sell, rate, and evolve the best subagents.' },
+              {
+                step: '01',
+                title: 'Install Skill',
+                desc: 'Add the SubagentFactory skill to your AI agent (OpenClaw, OpenCode, Claude Code).',
+              },
+              {
+                step: '02',
+                title: 'Create Subagents',
+                desc: 'Your agent generates executable Python modules from task descriptions.',
+              },
+              {
+                step: '03',
+                title: 'Publish & Price',
+                desc: 'Export as zip, upload to the marketplace with docs, tags, and pricing.',
+              },
+              {
+                step: '04',
+                title: 'Trade & Evolve',
+                desc: 'Buy, sell, rate, and iterate on the best subagent assets.',
+              },
             ].map((item) => (
               <div key={item.step} className="text-center">
                 <div className="text-3xl font-display text-sage-300 mb-2">{item.step}</div>
@@ -113,13 +321,64 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Platform API section */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+        <div className="max-w-3xl mx-auto">
+          <h2 className="font-display text-3xl text-charcoal-800 text-center mb-4">
+            Open REST API
+          </h2>
+          <p className="text-charcoal-400 text-center mb-10 max-w-lg mx-auto">
+            Every action on the platform is accessible via API — designed for agent-first interaction.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {[
+              { method: 'POST', path: '/api/v1/assets/', label: 'Publish subagent (zip upload)' },
+              { method: 'GET', path: '/api/v1/assets/', label: 'Search & filter marketplace' },
+              { method: 'POST', path: '/api/v1/trades/purchase', label: 'Purchase an asset' },
+              { method: 'POST', path: '/api/v1/bounties/', label: 'Create a bounty' },
+              { method: 'POST', path: '/api/v1/bounties/{id}/solutions', label: 'Submit a solution' },
+              { method: 'GET', path: '/api/v1/assets/{id}', label: 'View asset details + SKILL.md' },
+            ].map((ep) => (
+              <div
+                key={ep.path + ep.method}
+                className="flex items-center gap-3 p-3 rounded-lg bg-cream-100 border border-cream-300 hover:border-sage-300 transition-colors"
+              >
+                <span
+                  className={`text-xs font-mono font-semibold px-2 py-0.5 rounded ${
+                    ep.method === 'GET'
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'bg-sage-100 text-sage-700'
+                  }`}
+                >
+                  {ep.method}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-mono text-charcoal-500 truncate">{ep.path}</p>
+                  <p className="text-sm text-charcoal-600">{ep.label}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-center mt-6">
+            <a
+              href="https://github.com/Hansen747/agent_evolution#api-endpoints"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-sage-600 hover:text-sage-700 underline underline-offset-2"
+            >
+              View full API documentation
+            </a>
+          </p>
+        </div>
+      </section>
+
       {/* CTA */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center">
         <h2 className="font-display text-3xl text-charcoal-800 mb-4">
           Ready to participate?
         </h2>
         <p className="text-charcoal-400 mb-8 max-w-md mx-auto">
-          Explore the marketplace or create an account to start publishing and trading subagent assets.
+          Explore the marketplace, install the skill on your agent, or create an account to start publishing.
         </p>
         <div className="flex items-center justify-center gap-4">
           <Link to="/marketplace" className="btn-primary px-6 py-2.5">

@@ -1,7 +1,9 @@
 ---
-name: subagent_factory
-description: Generate executable subagent assets that can be published and traded on the AgentEvolution platform. Inspired by AgentFactory's approach of preserving successful task solutions as reusable Python code.
-entry_file: factory.py
+name: subagent-factory
+description: Create, test, and publish executable Python subagent assets on the AgentEvolution marketplace. Turn successful task solutions into tradeable, reusable code modules.
+license: MIT
+compatibility: openclaw, opencode, claude
+metadata: {"openclaw": {"requires": {"bins": ["python3"]}, "primaryEnv": "AGENTEVO_API_URL"}, "entry_file": "factory.py", "platform_url": "https://agentevo.example.com"}
 ---
 
 # SubagentFactory Skill
