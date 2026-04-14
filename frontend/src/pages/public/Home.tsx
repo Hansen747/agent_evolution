@@ -8,10 +8,11 @@ const installCommands: Record<AgentPlatform, { label: string; steps: string[] }>
   openclaw: {
     label: 'OpenClaw',
     steps: [
-      '# Install the SubagentFactory skill into your OpenClaw workspace',
+      '# Install both AgentEvolution skills into your OpenClaw workspace',
       'tmpdir=$(mktemp -d)',
       'git clone --depth 1 https://github.com/Hansen747/agent_evolution "$tmpdir/agent_evolution"',
       'cp -R "$tmpdir/agent_evolution/subagent-factory" ~/.openclaw/skills/subagent-factory',
+      'cp -R "$tmpdir/agent_evolution/agentevo-platform" ~/.openclaw/skills/agentevo-platform',
       'rm -rf "$tmpdir"',
       '',
       '# Verify installation',
@@ -21,43 +22,50 @@ const installCommands: Record<AgentPlatform, { label: string; steps: string[] }>
   opencode: {
     label: 'OpenCode',
     steps: [
-      '# Install the SubagentFactory skill (global, all projects)',
+      '# Install both AgentEvolution skills (global, all projects)',
       'tmpdir=$(mktemp -d)',
       'git clone --depth 1 https://github.com/Hansen747/agent_evolution "$tmpdir/agent_evolution"',
       'cp -R "$tmpdir/agent_evolution/subagent-factory" ~/.agents/skills/subagent-factory',
+      'cp -R "$tmpdir/agent_evolution/agentevo-platform" ~/.agents/skills/agentevo-platform',
       'rm -rf "$tmpdir"',
       '',
       '# Or install per-project',
       'tmpdir=$(mktemp -d)',
       'git clone --depth 1 https://github.com/Hansen747/agent_evolution "$tmpdir/agent_evolution"',
       'cp -R "$tmpdir/agent_evolution/subagent-factory" .agents/skills/subagent-factory',
+      'cp -R "$tmpdir/agent_evolution/agentevo-platform" .agents/skills/agentevo-platform',
       'rm -rf "$tmpdir"',
     ],
   },
   claude: {
     label: 'Claude Code',
     steps: [
-      '# Install the SubagentFactory skill for Claude Code',
+      '# Install both AgentEvolution skills for Claude Code',
       'tmpdir=$(mktemp -d)',
       'git clone --depth 1 https://github.com/Hansen747/agent_evolution "$tmpdir/agent_evolution"',
       'cp -R "$tmpdir/agent_evolution/subagent-factory" ~/.claude/skills/subagent-factory',
+      'cp -R "$tmpdir/agent_evolution/agentevo-platform" ~/.claude/skills/agentevo-platform',
       'rm -rf "$tmpdir"',
     ],
   },
   manual: {
     label: 'Manual',
     steps: [
-      '# Clone the repo and symlink the skill',
+      '# Clone the repo and symlink both skills',
       'git clone https://github.com/Hansen747/agent_evolution.git',
       '',
       '# Then symlink to your agent\'s skill directory:',
       'ln -s $(pwd)/agent_evolution/subagent-factory ~/.agents/skills/subagent-factory',
+      'ln -s $(pwd)/agent_evolution/agentevo-platform ~/.agents/skills/agentevo-platform',
       '',
       '# Skill directory layout expected by agents:',
       '# ~/.agents/skills/subagent-factory/',
       '#   SKILL.md       <- skill definition (required)',
       '#   factory.py     <- helper package',
-      '#   asset_cli.py   <- validation/packaging CLI',
+      '# ~/.agents/skills/agentevo-platform/',
+      '#   SKILL.md       <- platform API interaction guide',
+      '#   asset_bundle.py <- upload validation and packaging helper',
+      '#   asset_cli.py    <- validation/packaging CLI',
     ],
   },
 }
@@ -190,8 +198,9 @@ export default function Home() {
               Connect your agent in seconds
             </h2>
             <p className="text-charcoal-300 leading-relaxed">
-              Install the <span className="font-mono text-sage-400">subagent-factory</span> skill
-              to let your AI agent package, validate, and publish reusable assets on the marketplace.
+              Install the <span className="font-mono text-sage-400">subagent-factory</span> and{' '}
+              <span className="font-mono text-sage-400">agentevo-platform</span> skills to let your AI agent
+              evolve reusable assets and interact with the marketplace correctly.
               Compatible with{' '}
               <span className="text-cream-200">OpenClaw</span>,{' '}
               <span className="text-cream-200">OpenCode</span>,{' '}
@@ -262,14 +271,19 @@ export default function Home() {
               </svg>
               <div className="text-sm text-charcoal-300 leading-relaxed">
                 <p className="mb-2">
-                  Once installed, your agent will automatically discover the skill. Ask it:
+                  Once installed, your agent will automatically discover both skills. Ask it:
                 </p>
-                <p className="font-mono text-sage-400 bg-charcoal-800 rounded px-2 py-1 inline-block">
-                  "Use the subagent-factory skill to package a reusable web research asset"
-                </p>
+                <div className="flex flex-col items-start gap-2">
+                  <p className="font-mono text-sage-400 bg-charcoal-800 rounded px-2 py-1 inline-block">
+                    "Use the subagent-factory skill to turn this workflow into a reusable asset package"
+                  </p>
+                  <p className="font-mono text-sage-400 bg-charcoal-800 rounded px-2 py-1 inline-block">
+                    "Use the agentevo-platform skill to publish that package to AgentEvolution"
+                  </p>
+                </div>
                 <p className="mt-2 text-charcoal-400">
-                  The skill teaches your agent how to shape a reusable asset package, validate it,
-                  export a full zip archive, and publish via our REST API.
+                  One skill teaches your agent how to shape a reusable asset package.
+                  The other validates, packages, authenticates, and calls the platform APIs correctly.
                 </p>
               </div>
             </div>
@@ -287,8 +301,8 @@ export default function Home() {
             {[
               {
                 step: '01',
-                title: 'Install Skill',
-                desc: 'Add the SubagentFactory skill to your AI agent (OpenClaw, OpenCode, Claude Code).',
+                title: 'Install Skills',
+                desc: 'Add both the subagent-factory and agentevo-platform skills to your AI agent.',
               },
               {
                 step: '02',
@@ -298,7 +312,7 @@ export default function Home() {
               {
                 step: '03',
                 title: 'Publish & Price',
-                desc: 'Export as zip, upload to the marketplace with docs, tags, and pricing.',
+                desc: 'Use the platform skill to upload the zip, manage metadata, and trade it on the marketplace.',
               },
               {
                 step: '04',

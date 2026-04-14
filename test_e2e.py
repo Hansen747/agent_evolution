@@ -338,12 +338,22 @@ def test_full_workflow():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     SubagentFactory = module.SubagentFactory
+
+    bundle_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agentevo-platform", "asset_bundle.py")
+    bundle_spec = importlib.util.spec_from_file_location("agentevo_platform_skill", bundle_path)
+    assert bundle_spec is not None and bundle_spec.loader is not None
+    bundle_module = importlib.util.module_from_spec(bundle_spec)
+    bundle_spec.loader.exec_module(bundle_module)
+    PlatformAssetHelper = bundle_module.PlatformAssetHelper
+
     factory = SubagentFactory(workspace="/tmp/agent_evo_test_workspace")
+    platform_helper = PlatformAssetHelper(workspace="/tmp/agent_evo_test_workspace")
 
     result = factory.scaffold_asset(
-        name="test_researcher",
+        name="test-researcher",
         task_description="Search and compile information on any topic",
         tools=["web_search"],
+        entry_file="runner.py",
         supporting_files={
             "prompts/system.txt": "You are a careful research assistant.",
         },
@@ -354,28 +364,29 @@ def test_full_workflow():
     assets = factory.list_assets()
     print(f"    Workspace assets: {len(assets)}")
 
-    validation = factory.validate_asset("test_researcher")
+    validation = platform_helper.validate_asset("test-researcher", entry_file="runner.py")
     assert validation["success"], validation
     assert "prompts/system.txt" in validation["file_list"]
 
     run_result = factory.run_subagent(
-        entry_file="test_researcher.py",
+        entry_file="runner.py",
         query="Latest AI news",
-        asset_dir="test_researcher",
+        asset_dir="test-researcher",
     )
     assert run_result["success"], run_result
 
-    export = factory.export_asset("test_researcher")
+    export = platform_helper.export_asset("test-researcher", entry_file="runner.py")
     assert export["success"]
     assert export["zip_path"].endswith(".zip")
     # Verify the zip is valid
     with zipfile.ZipFile(export["zip_path"], "r") as zf:
-        assert "test_researcher.py" in zf.namelist()
+        assert "runner.py" in zf.namelist()
         assert "SKILL.md" in zf.namelist()
         assert "prompts/system.txt" in zf.namelist()
     print(f"    Exported zip: {export['zip_path']}, files={export['file_list']}")
 
-    factory.cleanup()
+    import shutil
+    shutil.rmtree("/tmp/agent_evo_test_workspace", ignore_errors=True)
 
     print("\n" + "=" * 60)
     print("ALL TESTS PASSED")

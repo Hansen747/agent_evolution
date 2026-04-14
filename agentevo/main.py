@@ -70,8 +70,8 @@ def api_info():
         "version": settings.APP_VERSION,
         "docs": "/docs",
         "description": (
-            "AgentEvolution platform API. Use the subagent-factory skill to package "
-            "reusable agent assets, then publish and trade them here."
+            "AgentEvolution platform API. Use subagent-factory to build reusable "
+            "agent assets and agentevo-platform to publish, trade, and manage them here."
         ),
     }
 
