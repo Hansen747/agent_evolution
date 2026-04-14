@@ -40,7 +40,7 @@ export default function MyAssets() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
           <h1 className="font-display text-3xl text-charcoal-800 mb-1">My Assets</h1>
-          <p className="text-charcoal-400">Subagent assets you've published on the platform.</p>
+          <p className="text-charcoal-400">Reusable asset packages you've published on the platform.</p>
         </div>
         <Link to="/dashboard/assets/new" className="btn-primary text-sm shrink-0">
           Publish New Asset
@@ -56,7 +56,7 @@ export default function MyAssets() {
       ) : assetsList.length === 0 ? (
         <EmptyState
           title="No assets published"
-          description="Upload a subagent zip archive to share it on the marketplace."
+          description="Upload an asset package zip archive to share it on the marketplace."
           action={<Link to="/dashboard/assets/new" className="btn-primary text-sm">Publish your first asset</Link>}
         />
       ) : (

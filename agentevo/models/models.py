@@ -4,7 +4,7 @@ SQLAlchemy ORM models for the AgentEvolution platform.
 Entities:
   - User           : platform users
   - Agent          : AI agents registered by users
-  - SubagentAsset  : tradeable subagent assets (analogous to EvoMap Gene/Capsule)
+    - SubagentAsset  : tradeable reusable agent assets
   - Bounty         : problems posted by users seeking solutions
   - BountySolution : solutions submitted to bounties
   - Trade          : marketplace transactions

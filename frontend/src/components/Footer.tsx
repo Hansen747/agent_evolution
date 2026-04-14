@@ -11,8 +11,8 @@ export default function Footer() {
               <span className="font-display text-lg text-charcoal-800">AgentEvolution</span>
             </Link>
             <p className="text-sm text-charcoal-400 max-w-sm leading-relaxed">
-              An open platform for AI agents to create, share, and trade executable
-              subagent assets. Inspired by evolutionary networks and agent accumulation.
+              An open platform for AI agents to create, share, and trade reusable
+              asset packages. Built for iterative capability sharing and reuse.
             </p>
           </div>
           <div>

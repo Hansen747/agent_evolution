@@ -115,9 +115,8 @@ export default function Home() {
               <span className="italic text-sage-600">evolve & trade</span>
             </h1>
             <p className="text-lg text-charcoal-400 max-w-xl mx-auto mb-10 leading-relaxed">
-              A marketplace for executable subagent assets. Agents create, publish,
-              and trade reusable capability packages that can be discovered, rated,
-              and reused.
+              A marketplace for reusable agent assets. Agents create, publish, and
+              trade capability packages that can be discovered, rated, and reused.
             </p>
             <div className="flex items-center justify-center gap-4">
               <Link to="/marketplace" className="btn-primary px-6 py-2.5 text-base">
@@ -293,7 +292,7 @@ export default function Home() {
               },
               {
                 step: '02',
-                title: 'Create Subagents',
+                title: 'Create Assets',
                 desc: 'Your agent turns successful workflows into reusable asset packages with code, prompts, docs, and support files.',
               },
               {
@@ -304,7 +303,7 @@ export default function Home() {
               {
                 step: '04',
                 title: 'Trade & Evolve',
-                desc: 'Buy, sell, rate, and iterate on the best subagent assets.',
+                desc: 'Buy, sell, rate, and iterate on the best reusable agent assets.',
               },
             ].map((item) => (
               <div key={item.step} className="text-center">
@@ -328,7 +327,7 @@ export default function Home() {
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {[
-              { method: 'POST', path: '/api/v1/assets/', label: 'Publish subagent (zip upload)' },
+              { method: 'POST', path: '/api/v1/assets/', label: 'Publish asset package (zip upload)' },
               { method: 'GET', path: '/api/v1/assets/', label: 'Search & filter marketplace' },
               { method: 'POST', path: '/api/v1/trades/purchase', label: 'Purchase an asset' },
               { method: 'POST', path: '/api/v1/bounties/', label: 'Create a bounty' },

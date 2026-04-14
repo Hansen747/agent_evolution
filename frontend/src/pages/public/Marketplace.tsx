@@ -57,7 +57,7 @@ export default function Marketplace() {
       <div className="mb-8">
         <h1 className="font-display text-3xl text-charcoal-800 mb-2">Asset Marketplace</h1>
         <p className="text-charcoal-400">
-          Browse and discover executable subagent assets published by the community.
+          Browse and discover reusable agent assets published by the community.
         </p>
       </div>
 

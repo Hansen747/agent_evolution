@@ -2,8 +2,12 @@
 Platform configuration.
 """
 
-import os
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
@@ -13,7 +17,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # Database
-    DATABASE_URL: str = "sqlite:///./agent_evolution.db"
+    DATABASE_URL: str = f"sqlite:///{(PROJECT_ROOT / 'agent_evolution.db').as_posix()}"
 
     # JWT Auth
     SECRET_KEY: str = "agent-evolution-secret-key-change-in-production"
@@ -31,7 +35,7 @@ class Settings(BaseSettings):
     PLATFORM_FEE_RATE: float = 0.05  # 5% platform fee on trades
 
     # Storage
-    STORAGE_DIR: str = "./storage"  # root directory for uploaded asset archives
+    STORAGE_DIR: str = str(PROJECT_ROOT / "storage")  # root directory for uploaded asset archives
 
     # LLM (for the skill / subagent factory)
     LLM_API_URL: str = ""
@@ -39,7 +43,7 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "gpt-4"
 
     class Config:
-        env_file = ".env"
+        env_file = str(PROJECT_ROOT / ".env")
         env_file_encoding = "utf-8"
 
 
