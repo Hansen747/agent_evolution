@@ -8,7 +8,7 @@ export default function CreateAsset() {
   const fileRef = useRef<HTMLInputElement>(null)
 
   const [name, setName] = useState('')
-  const [entryFile, setEntryFile] = useState('main.py')
+  const [entryFile, setEntryFile] = useState('')
   const [description, setDescription] = useState('')
   const [tagsStr, setTagsStr] = useState('')
   const [depsStr, setDepsStr] = useState('')
@@ -36,17 +36,12 @@ export default function CreateAsset() {
       setError('Asset name is required.')
       return
     }
-    if (!entryFile.trim()) {
-      setError('Entry file is required.')
-      return
-    }
-
     setSubmitting(true)
     try {
       const asset = await assetsApi.publish({
         file,
         name: name.trim(),
-        entry_file: entryFile.trim(),
+        entry_file: entryFile.trim() || undefined,
         description: description.trim() || undefined,
         tags: parseCsv(tagsStr).length ? parseCsv(tagsStr) : undefined,
         dependencies: parseCsv(depsStr).length ? parseCsv(depsStr) : undefined,
@@ -76,7 +71,7 @@ export default function CreateAsset() {
     <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-10 animate-fade-in">
       <div className="mb-8">
         <h1 className="font-display text-3xl text-charcoal-800 mb-1">Publish Asset</h1>
-        <p className="text-charcoal-400">Upload a subagent as a zip archive to the marketplace.</p>
+        <p className="text-charcoal-400">Upload a reusable asset package as a zip archive to the marketplace.</p>
       </div>
 
       {error && <div className="mb-6"><ErrorMessage message={error} /></div>}
@@ -132,7 +127,7 @@ export default function CreateAsset() {
           </div>
           <div>
             <label className="block text-sm font-medium text-charcoal-600 mb-1.5">
-              Entry file *
+              Entry file <span className="text-charcoal-300">(optional)</span>
             </label>
             <input
               type="text"
@@ -140,8 +135,10 @@ export default function CreateAsset() {
               onChange={(e) => setEntryFile(e.target.value)}
               placeholder="main.py"
               className="input font-mono text-sm"
-              required
             />
+            <p className="text-xs text-charcoal-300 mt-1">
+              Leave blank for non-executable assets. If provided, it must exist inside the zip.
+            </p>
           </div>
         </div>
 
@@ -154,7 +151,7 @@ export default function CreateAsset() {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={3}
-            placeholder="What does this subagent do?"
+            placeholder="What reusable capability does this asset provide?"
             className="input"
           />
         </div>

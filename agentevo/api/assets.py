@@ -1,9 +1,9 @@
 """
 Asset API: publish, search, retrieve, rate, download, and manage subagent assets.
 
-Assets are uploaded as .zip archives containing at minimum an entry Python file.
-The archive is stored on disk; metadata (including SKILL.md content for public
-preview) is stored in the database.
+Assets are uploaded as .zip archives. The only required in-archive file is
+SKILL.md, which is extracted for public preview. An executable entry file is
+optional and can be declared for assets that support direct execution.
 """
 
 import json
@@ -44,7 +44,7 @@ def _archive_path(asset_id: str) -> str:
     return os.path.join(ASSET_STORAGE, f"{asset_id}.zip")
 
 
-def _validate_zip(data: bytes, entry_file: str) -> tuple[list[str], str]:
+def _validate_zip(data: bytes, entry_file: Optional[str]) -> tuple[list[str], str]:
     """
     Validate a zip archive.
 
@@ -62,7 +62,7 @@ def _validate_zip(data: bytes, entry_file: str) -> tuple[list[str], str]:
     if not names:
         raise HTTPException(status_code=400, detail="Zip archive is empty")
 
-    if entry_file not in names:
+    if entry_file and entry_file not in names:
         raise HTTPException(
             status_code=400,
             detail=f"Zip archive must contain the entry file '{entry_file}'. Found: {names}",
@@ -75,11 +75,16 @@ def _validate_zip(data: bytes, entry_file: str) -> tuple[list[str], str]:
             skill_md = zf.read(name).decode("utf-8", errors="replace")
             break
 
+    if not skill_md:
+        raise HTTPException(status_code=400, detail="Zip archive must contain SKILL.md for public preview")
+
     return names, skill_md
 
 
-def _read_entry_code(archive_path: str, entry_file: str) -> str:
+def _read_entry_code(archive_path: str, entry_file: Optional[str]) -> str:
     """Read the entry file source code from a stored archive."""
+    if not entry_file:
+        return ""
     try:
         with zipfile.ZipFile(archive_path, "r") as zf:
             return zf.read(entry_file).decode("utf-8", errors="replace")
@@ -115,7 +120,7 @@ def _recompute_score(asset: SubagentAsset):
 async def publish_asset(
     file: UploadFile = File(..., description="Zip archive containing the subagent package"),
     name: str = Form(..., min_length=1, max_length=128),
-    entry_file: str = Form("subagent.py"),
+    entry_file: Optional[str] = Form(None),
     description: str = Form(""),
     tags: str = Form("[]", description="JSON array of tags, e.g. '[\"research\",\"web\"]'"),
     dependencies: str = Form("[]", description="JSON array of pip packages"),
@@ -150,13 +155,14 @@ async def publish_asset(
     data = await file.read()
     file_list, skill_md = _validate_zip(data, entry_file)
 
-    # Read entry code for quality estimation
+    # Read entry code for quality estimation when an executable entry is declared.
     entry_code = ""
-    try:
-        zf = zipfile.ZipFile(BytesIO(data))
-        entry_code = zf.read(entry_file).decode("utf-8", errors="replace")
-    except Exception:
-        pass
+    if entry_file:
+        try:
+            zf = zipfile.ZipFile(BytesIO(data))
+            entry_code = zf.read(entry_file).decode("utf-8", errors="replace")
+        except Exception:
+            pass
 
     # Create database record (to get the id)
     asset = SubagentAsset(
@@ -364,11 +370,12 @@ async def update_asset(
 
         # Re-estimate quality
         entry_code = ""
-        try:
-            zf = zipfile.ZipFile(BytesIO(data))
-            entry_code = zf.read(asset.entry_file).decode("utf-8", errors="replace")
-        except Exception:
-            pass
+        if asset.entry_file:
+            try:
+                zf = zipfile.ZipFile(BytesIO(data))
+                entry_code = zf.read(asset.entry_file).decode("utf-8", errors="replace")
+            except Exception:
+                pass
         asset.quality_score = _estimate_quality(entry_code, skill_md, asset.description)
 
     _recompute_score(asset)
@@ -477,32 +484,34 @@ def _estimate_quality(code: str, skill_md: str, description: str) -> float:
     In production this would be an AI review step.
     """
     score = 0.0
-    if not code:
-        return score
-    # Has code
-    if len(code) > 50:
-        score += 0.2
-    # Has main() function
-    if "def main(" in code:
-        score += 0.15
-    # Has docstrings
-    if '"""' in code or "'''" in code:
-        score += 0.1
-    # Has error handling
-    if "try:" in code and "except" in code:
-        score += 0.1
     # Has SKILL.md
     if len(skill_md) > 20:
-        score += 0.15
+        score += 0.35
     # Has description
     if len(description) > 20:
+        score += 0.2
+
+    if not code:
+        return min(1.0, score)
+
+    # Has code
+    if len(code) > 50:
+        score += 0.15
+    # Has main() function
+    if "def main(" in code:
         score += 0.1
+    # Has docstrings
+    if '"""' in code or "'''" in code:
+        score += 0.05
+    # Has error handling
+    if "try:" in code and "except" in code:
+        score += 0.05
     # Uses call_llm (generalizable)
     if "call_llm" in code:
-        score += 0.1
+        score += 0.05
     # Has return dict with answer
     if '"answer"' in code or "'answer'" in code:
-        score += 0.1
+        score += 0.05
 
     return min(1.0, score)
 

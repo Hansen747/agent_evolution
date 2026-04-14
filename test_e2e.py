@@ -15,6 +15,7 @@ Tests the full workflow:
 """
 
 import io
+import importlib.util
 import json
 import time
 import subprocess
@@ -155,26 +156,29 @@ def test_full_workflow():
     assert "SKILL.md" in asset["file_list"]
     assert len(asset["skill_md"]) > 0, "SKILL.md should be extracted as public preview"
 
-    # Publish a PAID asset
+    # Publish a PAID non-executable asset
     paid_zip = make_zip({
-        "analyser.py": SUBAGENT_CODE,
-        "SKILL.md": "# premium_analyser\nPremium analyser with ML capabilities",
+        "SKILL.md": "# premium_prompt_pack\nPremium prompt pack with reusable analysis workflows",
+        "prompts/system.txt": "You are a premium analysis assistant.",
+        "examples/sample_output.md": "Example structured analysis output",
     })
     r = requests.post(
         f"{API}/assets/",
         files={"file": ("analyser.zip", paid_zip, "application/zip")},
         data={
-            "name": "premium_analyser",
-            "description": "Advanced data analysis subagent with ML capabilities",
+            "name": "premium_prompt_pack",
+            "description": "Advanced reusable prompt pack for analysis workflows",
             "tags": json.dumps(["analysis", "ml", "premium"]),
-            "entry_file": "analyser.py",
             "price": "10.0",
         },
         headers=alice_h,
     )
     assert r.status_code == 201, f"Publish paid asset failed: {r.text}"
-    paid_asset_id = r.json()["id"]
-    print(f"    Paid asset published: premium_analyser (id={paid_asset_id}, price=10.0)")
+    paid_asset = r.json()
+    paid_asset_id = paid_asset["id"]
+    assert paid_asset["entry_file"] is None
+    assert "SKILL.md" in paid_asset["file_list"]
+    print(f"    Paid asset published: premium_prompt_pack (id={paid_asset_id}, price=10.0)")
 
     # ---- 6. Search assets ----
     print("\n[6] Search assets...")
@@ -328,27 +332,47 @@ def test_full_workflow():
 
     # ---- 20. Test SubagentFactory locally ----
     print("\n[20] Test SubagentFactory locally...")
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from skill.factory import SubagentFactory
+    factory_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "subagent-factory", "factory.py")
+    spec = importlib.util.spec_from_file_location("subagent_factory_skill", factory_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    SubagentFactory = module.SubagentFactory
     factory = SubagentFactory(workspace="/tmp/agent_evo_test_workspace")
 
-    result = factory.create_subagent(
+    result = factory.scaffold_asset(
         name="test_researcher",
         task_description="Search and compile information on any topic",
         tools=["web_search"],
+        supporting_files={
+            "prompts/system.txt": "You are a careful research assistant.",
+        },
     )
     assert result["success"]
-    print(f"    Subagent created: {result['entry_file']}")
+    print(f"    Asset scaffolded: {result['asset_dir']}")
 
-    subs = factory.list_subagents()
-    print(f"    Workspace subagents: {len(subs)}")
+    assets = factory.list_assets()
+    print(f"    Workspace assets: {len(assets)}")
 
-    export = factory.export("test_researcher.py")
+    validation = factory.validate_asset("test_researcher")
+    assert validation["success"], validation
+    assert "prompts/system.txt" in validation["file_list"]
+
+    run_result = factory.run_subagent(
+        entry_file="test_researcher.py",
+        query="Latest AI news",
+        asset_dir="test_researcher",
+    )
+    assert run_result["success"], run_result
+
+    export = factory.export_asset("test_researcher")
     assert export["success"]
     assert export["zip_path"].endswith(".zip")
     # Verify the zip is valid
     with zipfile.ZipFile(export["zip_path"], "r") as zf:
         assert "test_researcher.py" in zf.namelist()
+        assert "SKILL.md" in zf.namelist()
+        assert "prompts/system.txt" in zf.namelist()
     print(f"    Exported zip: {export['zip_path']}, files={export['file_list']}")
 
     factory.cleanup()

@@ -38,7 +38,7 @@ export interface AssetBrief {
   version: string
   description: string
   tags: string[]
-  entry_file: string
+  entry_file: string | null
   quality_score: number
   composite_score: number
   price: number

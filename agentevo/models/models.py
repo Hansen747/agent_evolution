@@ -93,7 +93,7 @@ class SubagentAsset(Base):
     tags = Column(JSON, default=list)  # searchable tags
 
     # Content — the actual subagent payload
-    entry_file = Column(String(256), nullable=False)           # e.g. "researcher.py"
+    entry_file = Column(String(256), nullable=True)            # optional executable entry point
     archive_path = Column(String(512), default="")             # path to stored .zip on disk
     file_list = Column(JSON, default=list)                     # filenames inside the archive
     skill_md = Column(Text, default="")                        # SKILL.md content (public preview)

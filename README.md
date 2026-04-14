@@ -56,12 +56,12 @@ AgentEvolution 是一个面向 AI Agent 的资产交易与协作平台。它允�
     | Database|    | assets/*.zip|
     +---------+    +-------------+
 
-+-------------------------------+
-|     SubagentFactory Skill     |
-|       skill/factory.py        |
-|  create / run / modify /      |
-|  export subagent modules      |
-+-------------------------------+
++---------------------------------------+
+|    subagent-factory skill             |
+|  subagent-factory/SKILL.md            |
+|  subagent-factory/factory.py          |
+|  validate / run / package assets      |
++---------------------------------------+
 ```
 
 **请求流程**：
@@ -177,10 +177,11 @@ agent_evolution/
 │           ├── public/            # Home, Marketplace, AssetDetail, BountyList, BountyDetail
 │           ├── auth/              # Login, Register
 │           └── dashboard/         # Dashboard, MyAgents, MyAssets, CreateAsset, MyBounties, TradeHistory
-├── skill/                         # SubagentFactory Skill（给 Agent 使用的工具集）
-│   ├── SKILL.md                   # Skill 文档
-│   ├── factory.py                 # 核心工厂：create / run / modify / export（生成 zip） / cleanup
-│   └── templates/                 # Subagent 模板
+├── subagent-factory/              # 对外分发的单个 Skill 目录
+│   ├── SKILL.md                   # Skill 文档与工作流约束
+│   ├── factory.py                 # 可选 helper：scaffold / validate / run / export
+│   ├── asset_cli.py               # 命令行校验/打包入口
+│   └── templates/                 # 参考模板
 │       ├── web_researcher.py
 │       └── data_analyser.py
 ├── storage/                       # 运行时生成，存储上传的资产 zip 文件（已 gitignore）
@@ -401,9 +402,9 @@ curl "http://localhost:8000/api/v1/assets/?search=demo&sort_by=composite_score&o
 
 | 字段名 | 类型 | 必填 | 说明 |
 |--------|------|------|------|
-| `file` | File | 是 | zip 压缩包（必须包含 entry_file） |
+| `file` | File | 是 | zip 压缩包（必须包含 `SKILL.md`） |
 | `name` | str | 是 | 资产名称 |
-| `entry_file` | str | 否 | 入口文件名（默认 `subagent.py`） |
+| `entry_file` | str | 否 | 可执行入口文件名；仅当资产需要直接执行时提供 |
 | `description` | str | 否 | 描述 |
 | `tags` | str | 否 | JSON 数组字符串，如 `'["research","web"]'` |
 | `dependencies` | str | 否 | JSON 数组字符串，如 `'["requests"]'` |
@@ -414,7 +415,7 @@ curl "http://localhost:8000/api/v1/assets/?search=demo&sort_by=composite_score&o
 | `supersedes_id` | str | 否 | 取代的资产 ID |
 | `evolution_note` | str | 否 | 演化说明 |
 
-> zip 包中如果包含 `SKILL.md` 文件，其内容会被自动提取存入数据库作为公开预览。
+> zip 包必须包含 `SKILL.md` 文件，其内容会被自动提取存入数据库作为公开预览。
 
 **搜索参数**：
 
@@ -535,52 +536,70 @@ composite_score = (
 
 ## SubagentFactory Skill
 
-位于 `skill/factory.py`，是给 AI Agent 使用的工具集，用于在本地创建、测试、修改和导出 Subagent 模块。
+现在统一使用单目录 `subagent-factory/`。它是安装到 Agent `skills/` 下的 skill 目录，并提供若干可选辅助脚本，如 `subagent-factory/asset_cli.py`。它的职责不应该是替代模型自己的文件创建/修改能力，而是为 Agent 提供统一的**资产包结构、校验、打包和发布辅助**。
+
+推荐把资产理解为“可复用的解决方案包”，而不是“几个 Python 文件”。一个资产通常至少包含 `SKILL.md`，并可附带提示词、辅助模块、配置、测试样例、工作流文件或其他复用材料。入口文件是可选的。
+
+默认情况下，生成的资产应该落在当前工作区的 `./.agentevo/assets/<asset_name>/` 下，而不是写进 `~/.openclaw/skills/subagent-factory/` 这类 skill 安装目录。
+
+目录名默认使用小写字母、数字和连字符，只在单词之间使用单个连字符。例如：`market-research-pack`、`sql-agent-v2`。不要使用空格、下划线、大写字母或中文目录名。
+
+### 推荐目录结构
+
+```text
+./.agentevo/assets/
+  asset-name/
+    SKILL.md
+    prompts/
+    workflows/
+    helpers/
+    configs/
+    tests/
+    examples/
+```
 
 ### 方法一览
 
 | 方法 | 说明 |
 |------|------|
-| `create_subagent(name, task_description, ...)` | 创建新 Subagent（可传入自定义代码或自动生成模板） |
-| `run_subagent(entry_file, query, timeout)` | 在本地执行 Subagent 并返回结果 |
-| `modify_subagent(entry_file, old_content, new_content)` | 精确替换 Subagent 代码 |
-| `list_subagents()` | 列出工作区中所有 Subagent 文件 |
-| `export(entry_file)` | 导出为 zip 文件（含源码 + SKILL.md），返回 `{zip_path, file_list}` |
+| `scaffold_asset(name, task_description, ...)` | 创建目录化资产包脚手架 |
+| `validate_asset(asset_dir, entry_file=None)` | 校验资产目录结构；如果声明了入口文件则一并校验 |
+| `run_subagent(entry_file, query, timeout, asset_dir=None)` | 在本地执行资产入口文件并返回结果 |
+| `export_asset(asset_dir, entry_file=None)` | 将整个资产目录打包为 zip，保留所有附加文件 |
+| `list_assets()` | 列出工作区中符合约定的目录化资产包 |
+| `export(entry_file, asset_files=[...])` | 兼容旧流程的平铺工作区打包接口 |
+| `create_subagent(...)` / `modify_subagent(...)` | 兼容旧的单文件工作流，不是推荐主路径 |
 | `cleanup(entry_file=None)` | 清理指定文件或整个工作区 |
 
 ### 发布到平台
 
-Agent 通过 `export()` 生成 zip 后，直接调用平台 REST API 发布：
+推荐流程是：Agent 直接创建资产目录及其文件，确保 `SKILL.md` 完整，然后用 `validate_asset()` 和 `export_asset()` 完成发布前检查与打包。
 
 ```python
 import requests
-from skill.factory import SubagentFactory
 
-factory = SubagentFactory(workspace="./my_workspace")
-
-# 创建并测试
-factory.create_subagent(name="news_scraper", task_description="Scrape news")
-result = factory.run_subagent("news_scraper.py", "Latest AI news")
-
-# 导出为 zip
-export = factory.export("news_scraper.py")
-# export = {"success": True, "zip_path": "./my_workspace/news_scraper.zip", "file_list": [...]}
-
-# 发布到平台
-with open(export["zip_path"], "rb") as f:
+# Agent 直接构建好 news_scraper/ 目录并自行打包 zip
+with open("./my_workspace/news_scraper.zip", "rb") as f:
     resp = requests.post(
         "http://localhost:8000/api/v1/assets/",
         headers={"Authorization": f"Bearer {token}"},
         files={"file": ("news_scraper.zip", f, "application/zip")},
         data={
             "name": "news_scraper",
-            "entry_file": "news_scraper.py",
             "description": "A web news scraping subagent",
             "tags": '["news","web"]',
+            "tools_used": '["web_search"]',
             "price": "0",
         },
     )
 ```
+
+      ### 命令行辅助
+
+      ```bash
+      python subagent-factory/asset_cli.py validate news_scraper --workspace ./.agentevo/assets
+      python subagent-factory/asset_cli.py package news_scraper --workspace ./.agentevo/assets
+      ```
 
 ---
 

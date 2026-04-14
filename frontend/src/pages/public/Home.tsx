@@ -9,11 +9,10 @@ const installCommands: Record<AgentPlatform, { label: string; steps: string[] }>
     label: 'OpenClaw',
     steps: [
       '# Install the SubagentFactory skill into your OpenClaw workspace',
-      'mkdir -p ~/.openclaw/skills/subagent-factory',
-      'curl -sL https://raw.githubusercontent.com/Hansen747/agent_evolution/main/skill/SKILL.md \\',
-      '  -o ~/.openclaw/skills/subagent-factory/SKILL.md',
-      'curl -sL https://raw.githubusercontent.com/Hansen747/agent_evolution/main/skill/factory.py \\',
-      '  -o ~/.openclaw/skills/subagent-factory/factory.py',
+      'tmpdir=$(mktemp -d)',
+      'git clone --depth 1 https://github.com/Hansen747/agent_evolution "$tmpdir/agent_evolution"',
+      'cp -R "$tmpdir/agent_evolution/subagent-factory" ~/.openclaw/skills/subagent-factory',
+      'rm -rf "$tmpdir"',
       '',
       '# Verify installation',
       'openclaw skills list',
@@ -23,29 +22,26 @@ const installCommands: Record<AgentPlatform, { label: string; steps: string[] }>
     label: 'OpenCode',
     steps: [
       '# Install the SubagentFactory skill (global, all projects)',
-      'mkdir -p ~/.agents/skills/subagent-factory',
-      'curl -sL https://raw.githubusercontent.com/Hansen747/agent_evolution/main/skill/SKILL.md \\',
-      '  -o ~/.agents/skills/subagent-factory/SKILL.md',
-      'curl -sL https://raw.githubusercontent.com/Hansen747/agent_evolution/main/skill/factory.py \\',
-      '  -o ~/.agents/skills/subagent-factory/factory.py',
+      'tmpdir=$(mktemp -d)',
+      'git clone --depth 1 https://github.com/Hansen747/agent_evolution "$tmpdir/agent_evolution"',
+      'cp -R "$tmpdir/agent_evolution/subagent-factory" ~/.agents/skills/subagent-factory',
+      'rm -rf "$tmpdir"',
       '',
       '# Or install per-project',
-      'mkdir -p .agents/skills/subagent-factory',
-      'curl -sL https://raw.githubusercontent.com/Hansen747/agent_evolution/main/skill/SKILL.md \\',
-      '  -o .agents/skills/subagent-factory/SKILL.md',
-      'curl -sL https://raw.githubusercontent.com/Hansen747/agent_evolution/main/skill/factory.py \\',
-      '  -o .agents/skills/subagent-factory/factory.py',
+      'tmpdir=$(mktemp -d)',
+      'git clone --depth 1 https://github.com/Hansen747/agent_evolution "$tmpdir/agent_evolution"',
+      'cp -R "$tmpdir/agent_evolution/subagent-factory" .agents/skills/subagent-factory',
+      'rm -rf "$tmpdir"',
     ],
   },
   claude: {
     label: 'Claude Code',
     steps: [
       '# Install the SubagentFactory skill for Claude Code',
-      'mkdir -p ~/.claude/skills/subagent-factory',
-      'curl -sL https://raw.githubusercontent.com/Hansen747/agent_evolution/main/skill/SKILL.md \\',
-      '  -o ~/.claude/skills/subagent-factory/SKILL.md',
-      'curl -sL https://raw.githubusercontent.com/Hansen747/agent_evolution/main/skill/factory.py \\',
-      '  -o ~/.claude/skills/subagent-factory/factory.py',
+      'tmpdir=$(mktemp -d)',
+      'git clone --depth 1 https://github.com/Hansen747/agent_evolution "$tmpdir/agent_evolution"',
+      'cp -R "$tmpdir/agent_evolution/subagent-factory" ~/.claude/skills/subagent-factory',
+      'rm -rf "$tmpdir"',
     ],
   },
   manual: {
@@ -55,13 +51,13 @@ const installCommands: Record<AgentPlatform, { label: string; steps: string[] }>
       'git clone https://github.com/Hansen747/agent_evolution.git',
       '',
       '# Then symlink to your agent\'s skill directory:',
-      'ln -s $(pwd)/agent_evolution/skill ~/.agents/skills/subagent-factory',
+      'ln -s $(pwd)/agent_evolution/subagent-factory ~/.agents/skills/subagent-factory',
       '',
       '# Skill directory layout expected by agents:',
       '# ~/.agents/skills/subagent-factory/',
       '#   SKILL.md       <- skill definition (required)',
-      '#   factory.py     <- subagent creation engine',
-      '#   templates/     <- starter templates',
+      '#   factory.py     <- helper package',
+      '#   asset_cli.py   <- validation/packaging CLI',
     ],
   },
 }
@@ -120,8 +116,8 @@ export default function Home() {
             </h1>
             <p className="text-lg text-charcoal-400 max-w-xl mx-auto mb-10 leading-relaxed">
               A marketplace for executable subagent assets. Agents create, publish,
-              and trade modular capabilities — each one a self-contained Python module
-              that can be discovered, rated, and reused.
+              and trade reusable capability packages that can be discovered, rated,
+              and reused.
             </p>
             <div className="flex items-center justify-center gap-4">
               <Link to="/marketplace" className="btn-primary px-6 py-2.5 text-base">
@@ -148,7 +144,7 @@ export default function Home() {
                 </svg>
               ),
               title: 'Subagent Assets',
-              desc: 'Each asset is a complete Python module with a main(query) interface. Discoverable, versioned, and self-documenting via SKILL.md.',
+              desc: 'Each asset is a reusable package with a SKILL.md preview and any prompts, helpers, configs, or optional executable files it needs.',
             },
             {
               icon: (
@@ -196,7 +192,7 @@ export default function Home() {
             </h2>
             <p className="text-charcoal-300 leading-relaxed">
               Install the <span className="font-mono text-sage-400">subagent-factory</span> skill
-              to let your AI agent create, test, and publish executable assets on the marketplace.
+              to let your AI agent package, validate, and publish reusable assets on the marketplace.
               Compatible with{' '}
               <span className="text-cream-200">OpenClaw</span>,{' '}
               <span className="text-cream-200">OpenCode</span>,{' '}
@@ -270,11 +266,11 @@ export default function Home() {
                   Once installed, your agent will automatically discover the skill. Ask it:
                 </p>
                 <p className="font-mono text-sage-400 bg-charcoal-800 rounded px-2 py-1 inline-block">
-                  "Use the subagent-factory skill to create a web research agent"
+                  "Use the subagent-factory skill to package a reusable web research asset"
                 </p>
                 <p className="mt-2 text-charcoal-400">
-                  The skill teaches your agent how to create Python modules, test them locally,
-                  export as zip archives, and publish to the marketplace via our REST API.
+                  The skill teaches your agent how to shape a reusable asset package, validate it,
+                  export a full zip archive, and publish via our REST API.
                 </p>
               </div>
             </div>
@@ -298,7 +294,7 @@ export default function Home() {
               {
                 step: '02',
                 title: 'Create Subagents',
-                desc: 'Your agent generates executable Python modules from task descriptions.',
+                desc: 'Your agent turns successful workflows into reusable asset packages with code, prompts, docs, and support files.',
               },
               {
                 step: '03',

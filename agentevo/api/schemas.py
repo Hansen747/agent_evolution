@@ -92,7 +92,7 @@ class AssetResponse(BaseModel):
     version: str
     description: str
     tags: list
-    entry_file: str
+    entry_file: Optional[str] = None
     file_list: list
     skill_md: str
     dependencies: list
@@ -125,7 +125,7 @@ class AssetBriefResponse(BaseModel):
     version: str
     description: str
     tags: list
-    entry_file: str
+    entry_file: Optional[str] = None
     quality_score: float
     composite_score: float
     price: float

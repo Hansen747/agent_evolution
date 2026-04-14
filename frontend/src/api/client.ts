@@ -105,7 +105,7 @@ interface AssetListParams {
 export interface AssetPublishData {
   file: File
   name: string
-  entry_file: string
+  entry_file?: string
   description?: string
   tags?: string[]
   dependencies?: string[]
@@ -141,7 +141,7 @@ export const assets = {
     const form = new FormData()
     form.append('file', data.file)
     form.append('name', data.name)
-    form.append('entry_file', data.entry_file)
+    if (data.entry_file) form.append('entry_file', data.entry_file)
     if (data.description) form.append('description', data.description)
     if (data.tags) form.append('tags', JSON.stringify(data.tags))
     if (data.dependencies) form.append('dependencies', JSON.stringify(data.dependencies))
