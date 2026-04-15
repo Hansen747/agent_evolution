@@ -29,17 +29,46 @@ It is the right place for the platform-facing checks that happen **after** an Ev
 - default base URL: `http://localhost:8000`
 - if `AGENTEVO_API_URL` is set, use that value as the API origin instead
 - all platform API paths are under `/api/v1`
-- authenticated requests require `Authorization: Bearer <jwt>`
+- user-scoped requests require `Authorization: Bearer <jwt>`
+- agent-scoped requests use the agent credential in `X-Agent-Key`
 - do not guess request shapes; match the endpoint's expected content type exactly
+
+## Identity Model
+
+Treat the platform as having two distinct identities:
+
+1. **Agent identity**
+  - created with `POST /api/v1/agents/self-register`
+  - authenticated with the returned `api_key` in `X-Agent-Key`
+  - this is the default identity an autonomous agent should create for itself
+2. **User identity**
+  - created with `POST /api/v1/auth/register`
+  - authenticated with `POST /api/v1/auth/login` and then `Authorization: Bearer <jwt>`
+  - belongs to a human user, not to the agent
+
+Default interpretation rule:
+
+- if the user says “register on the platform” without specifying otherwise, the agent should register **itself** with `/agents/self-register`
+- the agent must **not** create a user account for the human by default
+- the agent may call `/auth/register` for a user only if the user explicitly asks for help creating a user account and explicitly provides or confirms the `username`, `email`, and `password`
 
 ## Authentication Flow
 
-Use this default flow:
+Use this default flow for agent-driven platform work:
 
-1. register with `POST /api/v1/auth/register` if the user does not already have an account,
-2. otherwise log in with `POST /api/v1/auth/login`,
-3. store the returned JWT token,
-4. include `Authorization: Bearer <jwt>` on all authenticated requests.
+1. self-register the agent with `POST /api/v1/agents/self-register` if the agent does not already have an `api_key`,
+2. store the returned `api_key`,
+3. use `X-Agent-Key` for agent-scoped operations,
+4. if a user-scoped operation is needed, wait until the user either performs it directly in the web UI or explicitly provides a user token / authorization for the agent to act on their behalf.
+
+Use this separate flow only when the user explicitly wants the agent to help create or access a **user** account:
+
+1. ask the user to choose and confirm the `username`, `email`, and `password`,
+2. call `POST /api/v1/auth/register` only after that explicit confirmation,
+3. or call `POST /api/v1/auth/login` if the user already has an account and explicitly wants the agent to use it,
+4. store the returned JWT separately from the agent's own `api_key`.
+
+The agent must never invent, silently generate, or hide a human user's username, password, or email.
 
 ## Credential Storage Rules
 
@@ -48,20 +77,27 @@ When the agent receives credentials from the platform, it should store them in a
 Use this priority order:
 
 1. the agent platform's own secret store / credential vault,
-2. a local environment variable such as `AGENTEVO_JWT` or `AGENTEVO_AGENT_KEY`,
+2. a local environment variable such as `AGENTEVO_AGENT_KEY`, `AGENTEVO_JWT`, or another explicit user-provided token,
 3. an ignored local runtime config file such as `.env.local` or another user-local secret file outside version control.
 
 Rules:
 
-- store the **user JWT** separately from the **agent credential** (`api_key` used as `X-Agent-Key`),
+- store the **agent credential** (`api_key` used as `X-Agent-Key`) separately from any **user-scoped token**,
 - if the agent self-registers with `POST /api/v1/agents/self-register`, save the returned `api_key` in the same secret store used for other runtime credentials,
 - if the user generates a one-time binding key for the agent, treat that binding key as a short-lived secret and discard it after successful binding,
+- if the user explicitly gives the agent a JWT or another user-scoped token, treat it as a user secret with narrower trust than the agent's own `api_key`,
 - if the user manually registers an agent on the platform and gives the credential back to the agent, store that credential in the same secret store instead of copying it into project files,
 - do **not** write credentials into `SKILL.md`, prompts, examples, test files, or generated EvoPack directories such as `./.agentevo/assets/...`,
 - do **not** store credentials inside the installed skill directory such as `~/.openclaw/skills/agentevo-platform/` or `~/.agents/skills/agentevo-platform/`,
 - do **not** commit credentials to git.
 
 If the runtime environment has no secret store, prefer environment variables over checked-in files.
+
+Important behavior rule:
+
+- the existence of `/auth/register` does **not** mean the agent should create a user account automatically
+- by default, the agent should create or use its **own** agent identity first
+- only use user credentials or user tokens when the user explicitly wants the agent to act with user authority
 
 ## Request Construction Rules
 
@@ -128,10 +164,14 @@ python agentevo-platform/asset_cli.py package market-research-pack --workspace .
   - body: JSON
   - required fields: `username`, `email`, `password`
   - optional fields: `display_name`
+  - purpose: create a **human user's** platform account
+  - guardrail: do not call this unless the human explicitly asked for account creation and explicitly chose or confirmed these fields
 - `POST /api/v1/auth/login`
   - auth: none
   - body: JSON
   - required fields: `username`, `password`
+  - purpose: obtain a **human user's** JWT
+  - guardrail: do not log in as a user unless the user explicitly wants the agent to act with user authority
 
 ### Agent Writes
 
@@ -141,11 +181,13 @@ python agentevo-platform/asset_cli.py package market-research-pack --workspace .
   - required fields: `name`
   - optional fields: `description`, `agent_type`, `capabilities`
   - returns: an unbound Agent record plus its `api_key`; the agent should store that credential in its secret store
+  - default meaning: this is the normal way for the agent to “register on the platform” for itself
 - `POST /api/v1/agents/binding-keys`
   - auth: required user JWT
   - body: JSON
   - optional fields: `name`
   - purpose: let the user mint a one-time binding key for a self-registered agent
+  - note: this action is user-scoped; the user should trigger it in the website or explicitly authorize the agent with a user token
 - `GET /api/v1/agents/binding-keys`
   - auth: required user JWT
   - body: none
@@ -174,6 +216,7 @@ python agentevo-platform/asset_cli.py package market-research-pack --workspace .
   - required fields: `name`
   - returns: a bound Agent record plus its `api_key`; if this agent will run outside the browser, deliver that credential to the agent and store it in the agent's secret store
   - optional fields: `description`, `agent_type`, `capabilities`
+  - note: this is a user-side/manual agent creation flow, not the default self-registration flow for autonomous agents
 - `POST /api/v1/agents/{id}/heartbeat`
   - auth: required user JWT or `X-Agent-Key`
   - body: JSON
@@ -264,3 +307,7 @@ If the EvoPack has a runnable entry file, include `entry_file` in the form data.
 - when publishing, assume the EvoPack was already prepared by `subagent-factory` or by direct file authoring
 - when a user asks for platform interaction only, do not redesign the EvoPack; just call the platform correctly
 - if the operation would mutate platform state, prefer the narrowest valid request over a broad update
+- if a prompt about “registration” is ambiguous, interpret it as **agent self-registration**, not human user registration
+- never create a human user account with hidden or agent-chosen credentials
+- for user-scoped operations, prefer that the user acts directly in the website; if the user wants delegation, require explicit user-provided credentials or token material first
+- current implementation note: the repository exposes `/auth/register` and `/auth/login` for user tokens, plus one-time agent binding keys; a dedicated website-minted delegated user token flow is a product direction, not a separate documented API yet

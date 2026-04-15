@@ -7,7 +7,7 @@ const ASSOCIATION_LABELS: Record<string, { label: string; tone: string; descript
   agent_self_bound: {
     label: 'Agent Self-Bound',
     tone: 'bg-blue-100 text-blue-700',
-    description: 'The agent registered itself first, then bound itself to your user identity.',
+    description: 'The agent registered its own platform identity first, then you approved linking it to your user account.',
   },
   user_added_by_credential: {
     label: 'Added By Credential',
@@ -17,12 +17,12 @@ const ASSOCIATION_LABELS: Record<string, { label: string; tone: string; descript
   user_manual_registered: {
     label: 'Manual Registration',
     tone: 'bg-amber-100 text-amber-700',
-    description: 'You created the agent record on the platform and then handed the credential to the agent.',
+    description: 'You created this agent identity from the website and then handed the credential to the agent.',
   },
   unbound: {
     label: 'Unbound',
     tone: 'bg-charcoal-100 text-charcoal-500',
-    description: 'The agent has credentials but is not linked to any user yet.',
+    description: 'The agent already has its own platform credential but is not linked to any user account yet.',
   },
 }
 
@@ -94,10 +94,10 @@ export default function MyAgents() {
         capabilities: capabilities.split(',').map(s => s.trim()).filter(Boolean),
       })
       setName(''); setDescription(''); setCapabilities('')
-      setFormMsg('Agent registered. Copy the credential below and send it to your agent.')
+      setFormMsg('Agent identity created. Copy the credential below and send it to your agent.')
       fetchData()
     } catch (err: unknown) {
-      setFormMsg(err instanceof Error ? err.message : 'Failed to register agent')
+      setFormMsg(err instanceof Error ? err.message : 'Failed to create agent identity')
     }
   }
 
@@ -121,7 +121,7 @@ export default function MyAgents() {
       const created = await agentsApi.createBindingKey({ name: bindingKeyName.trim() || undefined })
       setBindingKeyName('')
       setNewBindingKey(created)
-      setFormMsg('Binding key generated. It is shown only once here, so copy it before leaving this page.')
+      setFormMsg('Binding key generated. It is shown only once here, so copy it before leaving this page and share it only with the agent you want to link.')
       fetchData()
     } catch (err: unknown) {
       setFormMsg(err instanceof Error ? err.message : 'Failed to create binding key')
@@ -169,7 +169,7 @@ export default function MyAgents() {
       <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="font-display text-3xl text-charcoal-800 mb-1">My Agents</h1>
-          <p className="text-charcoal-400">See your linked agents first, and open setup tools only when you need to bind or register another one.</p>
+          <p className="text-charcoal-400">See the agents linked to your user account first, and open setup tools only when you need to connect another agent identity.</p>
         </div>
         <button type="button" onClick={() => setSetupOpen((open) => !open)} className="btn-secondary self-start lg:self-auto">
           {setupOpen ? 'Hide Binding Tools' : 'Open Binding Tools'}
@@ -182,7 +182,7 @@ export default function MyAgents() {
         <div className="card p-5 bg-cream-100/70">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-charcoal-400 mb-2">Overview</p>
           <p className="font-display text-3xl text-charcoal-800">{agentsList.length}</p>
-          <p className="text-sm text-charcoal-400">Linked or registered agents in your account.</p>
+          <p className="text-sm text-charcoal-400">Agent identities currently linked to this user account.</p>
         </div>
         <div className="card p-5 bg-sage-50/70 border-sage-200">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sage-700 mb-2">Active Agents</p>
@@ -200,7 +200,7 @@ export default function MyAgents() {
         <div className="flex items-end justify-between gap-4 mb-4">
           <div>
             <h2 className="font-display text-2xl text-charcoal-800">Agent List</h2>
-            <p className="text-sm text-charcoal-400">Your agents stay at the top. Binding and registration tools live below in a separate section.</p>
+            <p className="text-sm text-charcoal-400">Your linked agents stay at the top. Binding and registration tools live below in a separate section.</p>
           </div>
         </div>
 
@@ -210,7 +210,7 @@ export default function MyAgents() {
           <ErrorMessage message={error} onRetry={fetchData} />
         ) : agentsList.length === 0 ? (
           <div className="card p-6 bg-cream-100/60">
-            <EmptyState title="No agents linked" description="Open Binding Tools below to claim an existing agent, generate a one-time binding key, or register a new one." />
+            <EmptyState title="No agents linked" description="Open Binding Tools below to claim an existing agent, generate a one-time binding key for a self-registered agent, or manually create an agent identity from the website." />
           </div>
         ) : (
           <div className="space-y-4">
@@ -262,7 +262,7 @@ export default function MyAgents() {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h2 className="font-display text-xl text-charcoal-700 mb-1">Binding And Registration Tools</h2>
-            <p className="text-sm text-charcoal-400">Open this section when you need to connect a new agent, generate a one-time binding key, or manually register one.</p>
+            <p className="text-sm text-charcoal-400">Open this section when you need to connect an agent identity to your user account. These tools do not create your website username, password, or email for you.</p>
           </div>
           <button type="button" onClick={() => setSetupOpen((open) => !open)} className="btn-secondary">
             {setupOpen ? 'Collapse Tools' : 'Expand Tools'}
@@ -274,19 +274,20 @@ export default function MyAgents() {
         <div className="space-y-8">
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
             <div className="card p-5 bg-cream-100/70 xl:col-span-3">
-              <h3 className="font-display text-xl text-charcoal-700 mb-3">Three Association Paths</h3>
+              <h3 className="font-display text-xl text-charcoal-700 mb-3">Three Agent-To-User Paths</h3>
+              <p className="text-sm text-charcoal-400 mb-4">Your human user account is separate from each agent's platform identity. By default, an autonomous agent should register itself first, not create a user account for you.</p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-charcoal-500">
                 <div>
-                  <p className="font-medium text-charcoal-700 mb-1">1. Agent self-registers, then binds itself</p>
-                  <p>The agent calls `/api/v1/agents/self-register`, receives its credential, then consumes a one-time binding key from this page with `/api/v1/agents/bind-with-key`.</p>
+                  <p className="font-medium text-charcoal-700 mb-1">1. Agent self-registers its own identity</p>
+                  <p>The agent calls `/api/v1/agents/self-register`, receives its own credential, then consumes a one-time binding key from this page with `/api/v1/agents/bind-with-key`.</p>
                 </div>
                 <div>
                   <p className="font-medium text-charcoal-700 mb-1">2. User adds an existing agent by credential</p>
                   <p>You log in here and paste the agent credential into My Agents to claim that agent immediately.</p>
                 </div>
                 <div>
-                  <p className="font-medium text-charcoal-700 mb-1">3. User manually registers a new agent</p>
-                  <p>The platform creates the agent record first, then you deliver the generated credential to your agent out of band.</p>
+                  <p className="font-medium text-charcoal-700 mb-1">3. User manually creates an agent identity</p>
+                  <p>The platform creates the agent identity first, then you deliver the generated credential to your agent out of band.</p>
                 </div>
               </div>
             </div>
@@ -295,7 +296,7 @@ export default function MyAgents() {
               <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
                 <div className="lg:max-w-xl">
                   <h3 className="font-display text-lg text-charcoal-700 mb-2">Generate One-Time Binding Key</h3>
-                  <p className="text-sm text-charcoal-400 mb-4">Create a user-approved binding key that one agent can consume exactly once. This avoids handing your login JWT to the agent.</p>
+                  <p className="text-sm text-charcoal-400 mb-4">Create a user-approved binding key that one agent can consume exactly once. This approves the agent-to-user link without handing your website login token to the agent.</p>
                   <form onSubmit={handleCreateBindingKey} className="flex flex-col sm:flex-row gap-3">
                     <input
                       value={bindingKeyName}
@@ -341,7 +342,7 @@ export default function MyAgents() {
 
             <form onSubmit={handleLinkExisting} className="card p-5 bg-sage-50/50 border-sage-200">
               <h3 className="font-display text-lg text-charcoal-700 mb-2">Add Existing Agent</h3>
-              <p className="text-sm text-charcoal-400 mb-4">Paste an agent credential to link an already registered agent to your account.</p>
+              <p className="text-sm text-charcoal-400 mb-4">Paste an agent credential to link an already registered agent identity to your user account.</p>
               <div className="mb-4">
                 <label className="block text-sm font-medium text-charcoal-600 mb-1">Agent Credential</label>
                 <input
@@ -356,8 +357,8 @@ export default function MyAgents() {
             </form>
 
             <form onSubmit={handleRegister} className="card p-5 xl:col-span-2 bg-amber-50/60 border-amber-200">
-              <h3 className="font-display text-lg text-charcoal-700 mb-2">Register New Agent</h3>
-              <p className="text-sm text-charcoal-400 mb-4">Create a new platform-side agent record, then send the generated credential to your agent.</p>
+              <h3 className="font-display text-lg text-charcoal-700 mb-2">Create Agent Identity For Your Agent</h3>
+              <p className="text-sm text-charcoal-400 mb-4">Create a new platform-side agent identity from the website, then send the generated credential to your agent. This does not create a human user account.</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-medium text-charcoal-600 mb-1">Name</label>
@@ -381,7 +382,7 @@ export default function MyAgents() {
                 <label className="block text-sm font-medium text-charcoal-600 mb-1">Capabilities <span className="text-charcoal-300">(comma-separated)</span></label>
                 <input value={capabilities} onChange={(e) => setCapabilities(e.target.value)} className="input" placeholder="web_search, code_gen, analysis" />
               </div>
-              <button type="submit" className="btn-primary">Register New Agent</button>
+              <button type="submit" className="btn-primary">Create Agent Identity</button>
             </form>
           </div>
 
@@ -389,12 +390,12 @@ export default function MyAgents() {
             <div className="flex items-center justify-between gap-3 mb-4">
               <div>
                 <h3 className="font-display text-xl text-charcoal-700">Binding Keys</h3>
-                <p className="text-sm text-charcoal-400">Each key can bind exactly one agent. Revoke unused keys at any time.</p>
+                <p className="text-sm text-charcoal-400">Each key can bind exactly one self-registered agent identity. Revoke unused keys at any time.</p>
               </div>
             </div>
 
             {bindingKeys.length === 0 ? (
-              <EmptyState title="No binding keys yet" description="Generate a one-time binding key when an agent needs permission to bind itself to your account." />
+              <EmptyState title="No binding keys yet" description="Generate a one-time binding key when a self-registered agent asks to link itself to your user account." />
             ) : (
               <div className="space-y-3">
                 {bindingKeys.map((bindingKey) => {

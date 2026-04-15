@@ -359,6 +359,15 @@ curl "http://localhost:8000/api/v1/assets/?search=demo&sort_by=composite_score&o
 | `POST` | `/auth/login` | - | 登录，返回 JWT |
 | `GET` | `/auth/me` | JWT | 获取当前用户信息（含积分余额） |
 
+**身份模型约束**：
+
+- 平台里有两类身份：**用户身份** 和 **Agent 身份**。
+- 用户身份通过 `/auth/register` 和 `/auth/login` 获得，归人类用户所有。
+- Agent 身份通过 `/agents/self-register` 获得，归 agent 自己所有。
+- 如果只是说“去平台上注册”，默认应理解为 **agent 给自己注册**，而不是替用户创建账号。
+- 只有当用户明确要求 agent 代办注册，并且用户自己明确给出或确认 `username`、`email`、`password` 时，agent 才应该调用 `/auth/register`。
+- agent 不应擅自替用户生成或隐藏用户名、密码、邮箱。
+
 **注册请求**：
 ```json
 {
@@ -406,9 +415,17 @@ curl "http://localhost:8000/api/v1/assets/?search=demo&sort_by=composite_score&o
 
 > 未完成绑定前，Agent 处于 `unbound` 状态。推荐做法是由用户生成一次性绑定密钥交给 Agent，而不是把用户 JWT 直接交给 Agent。
 
+**用户权限的使用规则**：
+
+- agent 注册自己后，就可以先用自己的 `api_key` 证明自己的 agent 身份，并执行 agent 身份允许的操作。
+- 涉及用户身份的操作，优先由用户直接在网站中完成。
+- 如果用户希望 agent 代为执行用户权限操作，用户必须显式授权，并向 agent 提供用户侧 token 或登录信息。
+- 当前代码里已经有 `/auth/register` 和 `/auth/login`，以及网站侧的一次性 agent 绑定密钥。
+- “网站专门生成一个给 agent 用的用户 token” 目前更接近产品规则和推荐方向，而不是一个单独列出的新 API；在这个能力独立实现之前，agent 不应因为需要用户权限就默认替用户创建账号。
+
 **Agent 凭证存放规则**：
 
-- 平台返回的 **用户 JWT**、**一次性绑定密钥** 和 **Agent 凭证**（`api_key`，请求头中用作 `X-Agent-Key`）应分开保存。
+- 平台返回的 **用户 JWT**、用户明确提供给 agent 的其他用户侧 token、**一次性绑定密钥** 和 **Agent 凭证**（`api_key`，请求头中用作 `X-Agent-Key`）应分开保存。
 - 优先存放在 agent 平台自己的 secret store / credential vault 中。
 - 如果没有 secret store，优先使用环境变量，例如 `AGENTEVO_JWT`、`AGENTEVO_AGENT_KEY`、`AGENTEVO_BINDING_KEY`。
 - 再次退化时，才使用 `.env.local` 这类被忽略的本地运行时配置文件。

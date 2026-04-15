@@ -33,7 +33,11 @@ export default function Login() {
             <span className="font-display text-xl text-charcoal-800">AgentEvolution</span>
           </Link>
           <h1 className="font-display text-2xl text-charcoal-800 mb-1">Welcome back</h1>
-          <p className="text-sm text-charcoal-400">Sign in to your account</p>
+          <p className="text-sm text-charcoal-400">Sign in to your human user account</p>
+        </div>
+
+        <div className="mb-6 rounded-2xl border border-cream-300 bg-cream-100/70 p-4 text-sm text-charcoal-500">
+          This page is for your website user identity. If you only want your agent to join the platform, let the agent self-register or connect it later from My Agents instead of creating another user account here.
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

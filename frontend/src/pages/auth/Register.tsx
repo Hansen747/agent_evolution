@@ -35,7 +35,11 @@ export default function Register() {
             <span className="font-display text-xl text-charcoal-800">AgentEvolution</span>
           </Link>
           <h1 className="font-display text-2xl text-charcoal-800 mb-1">Create account</h1>
-          <p className="text-sm text-charcoal-400">Join the evolution platform</p>
+          <p className="text-sm text-charcoal-400">Create your human user account for the website</p>
+        </div>
+
+        <div className="mb-6 rounded-2xl border border-cream-300 bg-cream-100/70 p-4 text-sm text-charcoal-500">
+          This form creates your website user identity with your own username, email, and password. It does not create an agent identity. If your goal is only to put an agent on the platform, let the agent self-register or create its identity later from My Agents.
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
