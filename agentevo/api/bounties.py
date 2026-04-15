@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
 from agentevo.core.database import get_db
-from agentevo.core.security import get_current_user_id
+from agentevo.core.security import ActorContext, get_current_actor_context
 from agentevo.core.scoring import compute_asset_score
 from agentevo.models.models import Bounty, BountySolution, SubagentAsset, User
 from agentevo.api.schemas import (
@@ -27,10 +27,11 @@ router = APIRouter(prefix="/bounties", tags=["bounties"])
 @router.post("/", response_model=BountyResponse, status_code=status.HTTP_201_CREATED)
 def create_bounty(
     req: BountyCreateRequest,
-    user_id: str = Depends(get_current_user_id),
+    actor: ActorContext = Depends(get_current_actor_context),
     db: Session = Depends(get_db),
 ):
     """Post a new problem / bounty."""
+    user_id = actor.user_id
     # Check user has enough credits for the reward
     if req.reward > 0:
         user = db.query(User).filter(User.id == user_id).first()
@@ -109,10 +110,11 @@ def get_bounty(bounty_id: str, db: Session = Depends(get_db)):
 def submit_solution(
     bounty_id: str,
     req: SolutionSubmitRequest,
-    user_id: str = Depends(get_current_user_id),
+    actor: ActorContext = Depends(get_current_actor_context),
     db: Session = Depends(get_db),
 ):
     """Submit a solution to a bounty."""
+    user_id = actor.user_id
     bounty = db.query(Bounty).filter(Bounty.id == bounty_id).first()
     if not bounty:
         raise HTTPException(status_code=404, detail="Bounty not found")
@@ -156,10 +158,11 @@ def list_solutions(
 def accept_solution(
     bounty_id: str,
     solution_id: str,
-    user_id: str = Depends(get_current_user_id),
+    actor: ActorContext = Depends(get_current_actor_context),
     db: Session = Depends(get_db),
 ):
     """Accept a solution (only the bounty poster can do this)."""
+    user_id = actor.user_id
     bounty = db.query(Bounty).filter(Bounty.id == bounty_id).first()
     if not bounty:
         raise HTTPException(status_code=404, detail="Bounty not found")
@@ -207,10 +210,11 @@ def rate_solution(
     bounty_id: str,
     solution_id: str,
     rating: float = Query(..., ge=0, le=5),
-    user_id: str = Depends(get_current_user_id),
+    actor: ActorContext = Depends(get_current_actor_context),
     db: Session = Depends(get_db),
 ):
     """Rate a solution (poster only)."""
+    user_id = actor.user_id
     bounty = db.query(Bounty).filter(Bounty.id == bounty_id).first()
     if not bounty or bounty.poster_id != user_id:
         raise HTTPException(status_code=403, detail="Only the poster can rate solutions")
@@ -230,10 +234,11 @@ def rate_solution(
 
 @router.get("/me/posted", response_model=list[BountyResponse])
 def my_bounties(
-    user_id: str = Depends(get_current_user_id),
+    actor: ActorContext = Depends(get_current_actor_context),
     db: Session = Depends(get_db),
 ):
     """List bounties posted by the current user."""
+    user_id = actor.user_id
     bounties = db.query(Bounty).filter(Bounty.poster_id == user_id).all()
     return [_bounty_response(b, db) for b in bounties]
 

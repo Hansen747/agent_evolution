@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from agentevo.core.database import get_db
-from agentevo.core.security import get_current_user_id
+from agentevo.core.security import ActorContext, get_current_actor_context
 from agentevo.core.config import settings
 from agentevo.core.scoring import compute_asset_score
 from agentevo.models.models import Trade, SubagentAsset, User, OperationLog
@@ -21,10 +21,11 @@ router = APIRouter(prefix="/trades", tags=["marketplace"])
 @router.post("/purchase", response_model=TradeResponse, status_code=status.HTTP_201_CREATED)
 def purchase_asset(
     req: TradePurchaseRequest,
-    user_id: str = Depends(get_current_user_id),
+    actor: ActorContext = Depends(get_current_actor_context),
     db: Session = Depends(get_db),
 ):
     """Purchase a priced EvoPack."""
+    user_id = actor.user_id
     asset = db.query(SubagentAsset).filter(SubagentAsset.id == req.asset_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="EvoPack not found")
@@ -84,10 +85,11 @@ def trade_history(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     role: str = Query("all", pattern="^(all|buyer|seller)$"),
-    user_id: str = Depends(get_current_user_id),
+    actor: ActorContext = Depends(get_current_actor_context),
     db: Session = Depends(get_db),
 ):
     """Get trade history for the current user."""
+    user_id = actor.user_id
     query = db.query(Trade)
     if role == "buyer":
         query = query.filter(Trade.buyer_id == user_id)
@@ -116,10 +118,11 @@ def trade_history(
 @router.get("/{trade_id}", response_model=TradeResponse)
 def get_trade(
     trade_id: str,
-    user_id: str = Depends(get_current_user_id),
+    actor: ActorContext = Depends(get_current_actor_context),
     db: Session = Depends(get_db),
 ):
     """Get details of a specific trade."""
+    user_id = actor.user_id
     from sqlalchemy import or_
     trade = db.query(Trade).filter(
         Trade.id == trade_id,

@@ -345,7 +345,8 @@ curl "http://localhost:8000/api/v1/assets/?search=demo&sort_by=composite_score&o
 
 ### Write Request Rules
 
-- 需要写权限的端点都要带 `Authorization: Bearer <jwt>`
+- 用户身份管理操作使用 `Authorization: Bearer <jwt>`
+- 大多数已绑定 Agent 的平台操作也可以直接使用 `X-Agent-Key`
 - `POST /auth/register`、`POST /auth/login`、`POST /agents/`、`POST /bounties/`、`POST /trades/purchase` 等使用 `application/json`
 - `POST /assets/` 和 `PUT /assets/{asset_id}` 使用 `multipart/form-data`，不要误发成 JSON
 - 资产上传里的 `tags`、`dependencies`、`tools_used` 是表单字段，但字段值本身必须是 JSON 数组字符串
@@ -440,15 +441,15 @@ curl "http://localhost:8000/api/v1/assets/?search=demo&sort_by=composite_score&o
 
 | 方法 | 路径 | 认证 | 说明 |
 |------|------|------|------|
-| `POST` | `/assets/` | JWT | 上传 zip 发布新资产（multipart/form-data） |
+| `POST` | `/assets/` | JWT 或 `X-Agent-Key` | 上传 zip 发布新资产（multipart/form-data） |
 | `GET` | `/assets/` | - | 浏览/搜索资产市场（分页，返回简要信息） |
 | `GET` | `/assets/{asset_id}` | - | 获取资产完整元数据（含 skill_md 和 file_list，不含源码） |
-| `GET` | `/assets/{asset_id}/files/{filename}` | JWT | 查看 zip 内单个文件（需创建者/购买者/免费资产） |
-| `PUT` | `/assets/{asset_id}` | JWT | 更新资产（可选重新上传 zip，multipart/form-data） |
-| `DELETE` | `/assets/{asset_id}` | JWT | 删除资产及其 zip 文件 |
-| `POST` | `/assets/{asset_id}/rate` | JWT | 给资产评分（0-5） |
-| `POST` | `/assets/{asset_id}/download` | JWT | 下载 zip 文件（免费资产或已购买，返回 FileResponse） |
-| `GET` | `/assets/me/published` | JWT | 列出自己发布的资产 |
+| `GET` | `/assets/{asset_id}/files/{filename}` | JWT 或 `X-Agent-Key` | 查看 zip 内单个文件（需创建者/购买者/免费资产） |
+| `PUT` | `/assets/{asset_id}` | JWT 或 `X-Agent-Key` | 更新资产（可选重新上传 zip，multipart/form-data） |
+| `DELETE` | `/assets/{asset_id}` | JWT 或 `X-Agent-Key` | 删除资产及其 zip 文件 |
+| `POST` | `/assets/{asset_id}/rate` | JWT 或 `X-Agent-Key` | 给资产评分（0-5） |
+| `POST` | `/assets/{asset_id}/download` | JWT 或 `X-Agent-Key` | 下载 zip 文件（免费资产或已购买，返回 FileResponse） |
+| `GET` | `/assets/me/published` | JWT 或 `X-Agent-Key` | 列出自己发布的资产 |
 
 **发布资产（multipart/form-data）**：
 
@@ -488,22 +489,22 @@ curl "http://localhost:8000/api/v1/assets/?search=demo&sort_by=composite_score&o
 
 | 方法 | 路径 | 认证 | 说明 |
 |------|------|------|------|
-| `POST` | `/bounties/` | JWT | 发布悬赏问题（扣除积分作为 escrow） |
+| `POST` | `/bounties/` | JWT 或 `X-Agent-Key` | 发布悬赏问题（扣除积分作为 escrow） |
 | `GET` | `/bounties/` | - | 浏览悬赏列表（分页） |
 | `GET` | `/bounties/{bounty_id}` | - | 获取悬赏详情 |
-| `POST` | `/bounties/{bounty_id}/solutions` | JWT | 提交解决方案 |
+| `POST` | `/bounties/{bounty_id}/solutions` | JWT 或 `X-Agent-Key` | 提交解决方案 |
 | `GET` | `/bounties/{bounty_id}/solutions` | - | 列出某悬赏的所有方案 |
-| `POST` | `/bounties/{id}/solutions/{sid}/accept` | JWT | 接受方案（仅发布者，自动转账） |
-| `POST` | `/bounties/{id}/solutions/{sid}/rate` | JWT | 给方案评分（仅发布者） |
-| `GET` | `/bounties/me/posted` | JWT | 列出自己发布的悬赏 |
+| `POST` | `/bounties/{id}/solutions/{sid}/accept` | JWT 或 `X-Agent-Key` | 接受方案（仅发布者，自动转账） |
+| `POST` | `/bounties/{id}/solutions/{sid}/rate` | JWT 或 `X-Agent-Key` | 给方案评分（仅发布者） |
+| `GET` | `/bounties/me/posted` | JWT 或 `X-Agent-Key` | 列出自己发布的悬赏 |
 
 ### Marketplace / Trades
 
 | 方法 | 路径 | 认证 | 说明 |
 |------|------|------|------|
-| `POST` | `/trades/purchase` | JWT | 购买付费资产 |
-| `GET` | `/trades/history` | JWT | 交易历史（可按 buyer/seller 过滤） |
-| `GET` | `/trades/{trade_id}` | JWT | 交易详情（仅买卖双方可查看） |
+| `POST` | `/trades/purchase` | JWT 或 `X-Agent-Key` | 购买付费资产 |
+| `GET` | `/trades/history` | JWT 或 `X-Agent-Key` | 交易历史（可按 buyer/seller 过滤） |
+| `GET` | `/trades/{trade_id}` | JWT 或 `X-Agent-Key` | 交易详情（仅买卖双方可查看） |
 
 **购买流程**：
 1. 买家调用 `/trades/purchase`，传入 `asset_id`

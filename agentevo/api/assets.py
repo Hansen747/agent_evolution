@@ -19,9 +19,9 @@ from sqlalchemy import or_
 
 from agentevo.core.config import settings
 from agentevo.core.database import get_db
-from agentevo.core.security import get_current_user_id
+from agentevo.core.security import ActorContext, get_current_actor_context
 from agentevo.core.scoring import compute_asset_score
-from agentevo.models.models import SubagentAsset, User, Trade, OperationLog
+from agentevo.models.models import Agent, SubagentAsset, User, Trade, OperationLog
 from agentevo.api.schemas import (
     EvoPackUpdateRequest, EvoPackResponse,
     EvoPackBriefResponse, EvoPackRateRequest,
@@ -131,11 +131,21 @@ async def publish_asset(
     supersedes_id: Optional[str] = Form(None),
     evolution_note: str = Form(""),
     agent_id: Optional[str] = Query(None, description="Agent that produced this EvoPack"),
-    user_id: str = Depends(get_current_user_id),
+    actor: ActorContext = Depends(get_current_actor_context),
     db: Session = Depends(get_db),
 ):
     """Publish a new EvoPack by uploading a zip archive."""
     _ensure_storage()
+    user_id = actor.user_id
+
+    if actor.agent:
+        if agent_id and agent_id != actor.agent.id:
+            raise HTTPException(status_code=403, detail="Agent credential cannot publish on behalf of another agent")
+        agent_id = actor.agent.id
+    elif agent_id:
+        producing_agent = db.query(Agent).filter(Agent.id == agent_id).first()
+        if not producing_agent or producing_agent.owner_id != user_id:
+            raise HTTPException(status_code=403, detail="agent_id does not belong to the current user")
 
     # Parse JSON form fields
     try:
@@ -200,7 +210,7 @@ async def publish_asset(
     db.refresh(asset)
 
     # Log the operation
-    _log_operation(db, agent_id, user_id, "publish_evopack", "evopack", asset.id)
+    _log_operation(db, actor.agent.id if actor.agent else agent_id, user_id, "publish_evopack", "evopack", asset.id)
 
     return asset
 
@@ -263,10 +273,11 @@ def list_assets(
 
 @router.get("/me/published", response_model=list[EvoPackBriefResponse])
 def my_assets(
-    user_id: str = Depends(get_current_user_id),
+    actor: ActorContext = Depends(get_current_actor_context),
     db: Session = Depends(get_db),
 ):
     """List EvoPacks published by the current user."""
+    user_id = actor.user_id
     return db.query(SubagentAsset).filter(SubagentAsset.creator_id == user_id).all()
 
 
@@ -288,7 +299,7 @@ def get_asset(asset_id: str, db: Session = Depends(get_db)):
 def get_asset_file(
     asset_id: str,
     filename: str,
-    user_id: str = Depends(get_current_user_id),
+    actor: ActorContext = Depends(get_current_actor_context),
     db: Session = Depends(get_db),
 ):
     """
@@ -296,6 +307,7 @@ def get_asset_file(
 
     Only the EvoPack creator or users who have purchased it can view files.
     """
+    user_id = actor.user_id
     asset = db.query(SubagentAsset).filter(SubagentAsset.id == asset_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="EvoPack not found")
@@ -333,10 +345,11 @@ async def update_asset(
     tags: Optional[str] = Form(None),
     price: Optional[float] = Form(None),
     is_listed: Optional[bool] = Form(None),
-    user_id: str = Depends(get_current_user_id),
+    actor: ActorContext = Depends(get_current_actor_context),
     db: Session = Depends(get_db),
 ):
     """Update an EvoPack you own. Optionally re-upload the zip archive."""
+    user_id = actor.user_id
     asset = db.query(SubagentAsset).filter(
         SubagentAsset.id == asset_id, SubagentAsset.creator_id == user_id
     ).first()
@@ -387,10 +400,11 @@ async def update_asset(
 @router.delete("/{asset_id}", response_model=MessageResponse)
 def delete_asset(
     asset_id: str,
-    user_id: str = Depends(get_current_user_id),
+    actor: ActorContext = Depends(get_current_actor_context),
     db: Session = Depends(get_db),
 ):
     """Delist / delete an EvoPack and its archive."""
+    user_id = actor.user_id
     asset = db.query(SubagentAsset).filter(
         SubagentAsset.id == asset_id, SubagentAsset.creator_id == user_id
     ).first()
@@ -412,10 +426,11 @@ def delete_asset(
 def rate_asset(
     asset_id: str,
     req: EvoPackRateRequest,
-    user_id: str = Depends(get_current_user_id),
+    actor: ActorContext = Depends(get_current_actor_context),
     db: Session = Depends(get_db),
 ):
     """Rate an EvoPack (simple running average)."""
+    user_id = actor.user_id
     asset = db.query(SubagentAsset).filter(SubagentAsset.id == asset_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="EvoPack not found")
@@ -436,7 +451,7 @@ def rate_asset(
 @router.post("/{asset_id}/download")
 def download_asset(
     asset_id: str,
-    user_id: str = Depends(get_current_user_id),
+    actor: ActorContext = Depends(get_current_actor_context),
     db: Session = Depends(get_db),
 ):
     """
@@ -444,6 +459,7 @@ def download_asset(
 
     For paid EvoPacks, use /trades/purchase first then download.
     """
+    user_id = actor.user_id
     asset = db.query(SubagentAsset).filter(SubagentAsset.id == asset_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="EvoPack not found")

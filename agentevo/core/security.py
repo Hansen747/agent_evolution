@@ -2,6 +2,7 @@
 Security utilities: password hashing, JWT tokens, auth dependencies.
 """
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -16,6 +17,12 @@ from agentevo.models.models import Agent
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 optional_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+
+
+@dataclass
+class ActorContext:
+    user_id: str
+    agent: Optional[Agent] = None
 
 
 def hash_password(password: str) -> str:
@@ -111,3 +118,39 @@ def get_optional_agent(
             detail="Invalid agent credential",
         )
     return agent
+
+
+def get_current_actor_context(
+    user_id: Optional[str] = Depends(get_optional_user_id),
+    agent: Optional[Agent] = Depends(get_optional_agent),
+) -> ActorContext:
+    """Resolve the acting user from either a user JWT or a bound agent credential."""
+    if user_id and agent:
+        if agent.owner_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Agent is not bound to a user",
+            )
+        if agent.owner_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User token and agent credential belong to different users",
+            )
+        return ActorContext(user_id=user_id, agent=agent)
+
+    if user_id:
+        return ActorContext(user_id=user_id, agent=agent)
+
+    if agent:
+        if agent.owner_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Agent is not bound to a user",
+            )
+        return ActorContext(user_id=agent.owner_id, agent=agent)
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Missing user token or agent credential",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
