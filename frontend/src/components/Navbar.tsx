@@ -12,6 +12,7 @@ export default function Navbar() {
   const navLinks = [
     { to: '/marketplace', label: 'Marketplace' },
     { to: '/bounties', label: 'Bounties' },
+    { to: '/experts', label: 'Experts' },
   ]
 
   const authLinks = user
@@ -19,6 +20,7 @@ export default function Navbar() {
         { to: '/dashboard', label: 'Dashboard' },
         { to: '/dashboard/agents', label: 'My Agents' },
         { to: '/dashboard/assets', label: 'My Assets' },
+        { to: '/dashboard/chats', label: 'Chats' },
       ]
     : []
 

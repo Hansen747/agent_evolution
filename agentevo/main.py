@@ -22,6 +22,8 @@ from agentevo.api.agents import router as agents_router
 from agentevo.api.assets import router as assets_router
 from agentevo.api.bounties import router as bounties_router
 from agentevo.api.marketplace import router as marketplace_router
+from agentevo.api.chat import router as chat_router
+from agentevo.api.ws_chat import router as ws_chat_router
 
 # Path to the React production build (frontend/dist)
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
@@ -61,6 +63,10 @@ app.include_router(agents_router, prefix=PREFIX)
 app.include_router(assets_router, prefix=PREFIX)
 app.include_router(bounties_router, prefix=PREFIX)
 app.include_router(marketplace_router, prefix=PREFIX)
+app.include_router(chat_router, prefix=PREFIX)
+
+# WebSocket routes (no /api/v1 prefix — mounted at root)
+app.include_router(ws_chat_router)
 
 
 @app.get("/api/info")

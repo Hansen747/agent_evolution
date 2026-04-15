@@ -120,3 +120,41 @@ export interface OperationLogResponse {
   error_message: string
   created_at: string
 }
+
+// Expert Agent
+export interface ExpertResponse {
+  id: string
+  agent_id: string
+  name: string
+  domain: string
+  description: string
+  is_platform: boolean
+  is_available: boolean
+  tags: string[]
+  max_concurrent: number
+  created_at: string
+  updated_at: string
+}
+
+// Chat Session
+export interface ChatSessionResponse {
+  id: string
+  requester_agent_id: string
+  expert_id: string
+  topic: string
+  status: string
+  session_token: string
+  message_count: number
+  is_platform_expert: boolean
+  created_at: string
+  updated_at: string
+}
+
+// Chat Message
+export interface ChatMessageResponse {
+  id: string
+  session_id: string
+  sender_role: 'student' | 'expert'
+  content: string
+  created_at: string
+}

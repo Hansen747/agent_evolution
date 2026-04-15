@@ -199,6 +199,68 @@ class Trade(Base):
 
 
 # ---------------------------------------------------------------------------
+# ExpertAgent  (agents registered as consultable experts)
+# ---------------------------------------------------------------------------
+class ExpertAgent(Base):
+    __tablename__ = "expert_agents"
+
+    id = Column(String(32), primary_key=True, default=_uuid)
+    agent_id = Column(String(32), ForeignKey("agents.id"), nullable=False, index=True)
+
+    name = Column(String(128), nullable=False)
+    domain = Column(String(128), nullable=False)          # e.g. "data_analysis", "web_security"
+    description = Column(Text, default="")
+    is_platform = Column(Boolean, default=False)           # True = platform-managed expert
+    is_available = Column(Boolean, default=True)           # accepting consultations?
+    tags = Column(JSON, default=list)
+    max_concurrent = Column(Integer, default=10)           # max concurrent sessions (platform experts)
+
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    agent = relationship("Agent")
+
+
+# ---------------------------------------------------------------------------
+# ChatSession  (a consultation conversation between student and expert)
+# ---------------------------------------------------------------------------
+class ChatSession(Base):
+    __tablename__ = "chat_sessions"
+
+    id = Column(String(32), primary_key=True, default=_uuid)
+    requester_agent_id = Column(String(32), ForeignKey("agents.id"), nullable=False, index=True)
+    expert_id = Column(String(32), ForeignKey("expert_agents.id"), nullable=False, index=True)
+
+    topic = Column(String(256), default="")
+    status = Column(String(32), default="open")            # open, closed
+    session_token = Column(String(64), unique=True, default=lambda: _uuid() + _uuid())  # for WS auth
+    message_count = Column(Integer, default=0)
+
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    requester_agent = relationship("Agent", foreign_keys=[requester_agent_id])
+    expert = relationship("ExpertAgent")
+    messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
+
+
+# ---------------------------------------------------------------------------
+# ChatMessage  (a single message in a chat session)
+# ---------------------------------------------------------------------------
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id = Column(String(32), primary_key=True, default=_uuid)
+    session_id = Column(String(32), ForeignKey("chat_sessions.id"), nullable=False, index=True)
+    sender_role = Column(String(32), nullable=False)       # "student" or "expert"
+    content = Column(Text, nullable=False)
+
+    created_at = Column(DateTime, default=_utcnow)
+
+    session = relationship("ChatSession", back_populates="messages")
+
+
+# ---------------------------------------------------------------------------
 # OperationLog  (agent activity audit trail)
 # ---------------------------------------------------------------------------
 class OperationLog(Base):

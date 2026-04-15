@@ -242,6 +242,87 @@ class OperationLogResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Expert Agent
+# ---------------------------------------------------------------------------
+class ExpertRegisterRequest(BaseModel):
+    agent_id: str
+    name: str = Field(..., min_length=1, max_length=128)
+    domain: str = Field(..., min_length=1, max_length=128)
+    description: str = ""
+    tags: List[str] = []
+    max_concurrent: int = 10
+
+
+class ExpertUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    domain: Optional[str] = None
+    description: Optional[str] = None
+    is_available: Optional[bool] = None
+    tags: Optional[List[str]] = None
+
+
+class ExpertResponse(BaseModel):
+    id: str
+    agent_id: str
+    name: str
+    domain: str
+    description: str
+    is_platform: bool
+    is_available: bool
+    tags: list
+    max_concurrent: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ---------------------------------------------------------------------------
+# Chat Session
+# ---------------------------------------------------------------------------
+class ChatSessionCreateRequest(BaseModel):
+    expert_id: str
+    agent_id: str
+    topic: str = ""
+
+
+class ChatSessionResponse(BaseModel):
+    id: str
+    requester_agent_id: str
+    expert_id: str
+    topic: str
+    status: str
+    session_token: str
+    message_count: int
+    is_platform_expert: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ---------------------------------------------------------------------------
+# Chat Message
+# ---------------------------------------------------------------------------
+class ChatMessageSendRequest(BaseModel):
+    content: str = Field(..., min_length=1)
+    sender_role: str = Field(..., pattern="^(student|expert)$")
+
+
+class ChatMessageResponse(BaseModel):
+    id: str
+    session_id: str
+    sender_role: str
+    content: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ---------------------------------------------------------------------------
 # Generic
 # ---------------------------------------------------------------------------
 class PaginatedResponse(BaseModel):

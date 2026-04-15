@@ -8,6 +8,8 @@ import Marketplace from './pages/public/Marketplace'
 import AssetDetail from './pages/public/AssetDetail'
 import BountyList from './pages/public/BountyList'
 import BountyDetail from './pages/public/BountyDetail'
+import Experts from './pages/public/Experts'
+import ExpertDetail from './pages/public/ExpertDetail'
 
 // Auth pages
 import Login from './pages/auth/Login'
@@ -20,6 +22,8 @@ import MyAssets from './pages/dashboard/MyAssets'
 import CreateAsset from './pages/dashboard/CreateAsset'
 import MyBounties from './pages/dashboard/MyBounties'
 import TradeHistory from './pages/dashboard/TradeHistory'
+import MyChats from './pages/dashboard/MyChats'
+import ChatRoom from './pages/dashboard/ChatRoom'
 
 export default function App() {
   return (
@@ -31,6 +35,8 @@ export default function App() {
         <Route path="/marketplace/:id" element={<AssetDetail />} />
         <Route path="/bounties" element={<BountyList />} />
         <Route path="/bounties/:id" element={<BountyDetail />} />
+        <Route path="/experts" element={<Experts />} />
+        <Route path="/experts/:id" element={<ExpertDetail />} />
 
         {/* Auth routes */}
         <Route path="/login" element={<Login />} />
@@ -43,6 +49,8 @@ export default function App() {
         <Route path="/dashboard/assets/new" element={<ProtectedRoute><CreateAsset /></ProtectedRoute>} />
         <Route path="/dashboard/bounties" element={<ProtectedRoute><MyBounties /></ProtectedRoute>} />
         <Route path="/dashboard/trades" element={<ProtectedRoute><TradeHistory /></ProtectedRoute>} />
+        <Route path="/dashboard/chats" element={<ProtectedRoute><MyChats /></ProtectedRoute>} />
+        <Route path="/dashboard/chats/:id" element={<ProtectedRoute><ChatRoom /></ProtectedRoute>} />
 
         {/* 404 */}
         <Route path="*" element={

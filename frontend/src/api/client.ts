@@ -65,6 +65,7 @@ import type {
   TokenResponse, UserProfile, AgentResponse,
   AssetBrief, AssetFull, BountyResponse, SolutionResponse,
   TradeResponse, PaginatedResponse, OperationLogResponse,
+  ExpertResponse, ChatSessionResponse, ChatMessageResponse,
 } from '../types'
 
 export const auth = {
@@ -262,4 +263,74 @@ export const trades = {
   history: (page = 1, pageSize = 20, role = 'all') =>
     get<PaginatedResponse<TradeResponse>>(`/trades/history?page=${page}&page_size=${pageSize}&role=${role}`),
   get: (id: string) => get<TradeResponse>(`/trades/${id}`),
+}
+
+// ─── Experts ─────────────────────────────────────────────────────────────────
+
+interface ExpertListParams {
+  page?: number
+  page_size?: number
+  domain?: string
+  search?: string
+  is_platform?: boolean
+}
+
+export const experts = {
+  list: (params: ExpertListParams = {}) => {
+    const qs = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== '') qs.set(k, String(v))
+    })
+    return get<PaginatedResponse<ExpertResponse>>(`/experts/?${qs}`)
+  },
+  get: (id: string) => get<ExpertResponse>(`/experts/${id}`),
+  register: (data: { agent_id: string; name: string; domain: string; description?: string; tags?: string[] }) =>
+    post<ExpertResponse>('/experts/', data),
+  update: (id: string, data: { name?: string; domain?: string; description?: string; is_available?: boolean; tags?: string[] }) =>
+    put<ExpertResponse>(`/experts/${id}`, data),
+  delete: (id: string) => del<{ message: string }>(`/experts/${id}`),
+}
+
+// ─── Chat ────────────────────────────────────────────────────────────────────
+
+export const chat = {
+  createSession: (data: { expert_id: string; agent_id: string; topic?: string }) =>
+    post<ChatSessionResponse>('/chat/sessions', data),
+
+  listSessions: (params: { page?: number; page_size?: number; role?: string; status?: string } = {}) => {
+    const qs = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== '') qs.set(k, String(v))
+    })
+    return get<PaginatedResponse<ChatSessionResponse>>(`/chat/sessions?${qs}`)
+  },
+
+  getSession: (id: string) => get<ChatSessionResponse>(`/chat/sessions/${id}`),
+
+  closeSession: (id: string) => post<{ message: string }>(`/chat/sessions/${id}/close`),
+
+  sendMessage: (sessionId: string, data: { content: string; sender_role: 'student' | 'expert' }) =>
+    post<ChatMessageResponse>(`/chat/sessions/${sessionId}/messages`, data),
+
+  listMessages: (sessionId: string, after?: string, limit = 50) => {
+    const qs = new URLSearchParams()
+    if (after) qs.set('after', after)
+    qs.set('limit', String(limit))
+    return get<ChatMessageResponse[]>(`/chat/sessions/${sessionId}/messages?${qs}`)
+  },
+
+  incoming: (params: { page?: number; page_size?: number; status?: string } = {}) => {
+    const qs = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== '') qs.set(k, String(v))
+    })
+    return get<PaginatedResponse<ChatSessionResponse>>(`/chat/incoming?${qs}`)
+  },
+
+  /** Create a WebSocket connection for platform expert chat. */
+  connectWs: (sessionId: string, token: string): WebSocket => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const host = window.location.host
+    return new WebSocket(`${protocol}//${host}/ws/chat/${sessionId}?token=${encodeURIComponent(token)}`)
+  },
 }
