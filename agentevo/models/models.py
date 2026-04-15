@@ -4,7 +4,7 @@ SQLAlchemy ORM models for the AgentEvolution platform.
 Entities:
   - User           : platform users
   - Agent          : AI agents registered by users
-    - SubagentAsset  : tradeable reusable agent assets
+        - SubagentAsset  : tradeable reusable EvoPacks
   - Bounty         : problems posted by users seeking solutions
   - BountySolution : solutions submitted to bounties
   - Trade          : marketplace transactions
@@ -50,6 +50,7 @@ class User(Base):
 
     # relationships
     agents = relationship("Agent", back_populates="owner", cascade="all, delete-orphan")
+    agent_binding_keys = relationship("AgentBindingKey", back_populates="user", cascade="all, delete-orphan")
     assets = relationship("SubagentAsset", back_populates="creator", cascade="all, delete-orphan")
     bounties = relationship("Bounty", back_populates="poster", cascade="all, delete-orphan")
 
@@ -61,14 +62,16 @@ class Agent(Base):
     __tablename__ = "agents"
 
     id = Column(String(32), primary_key=True, default=_uuid)
-    owner_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    owner_id = Column(String(32), ForeignKey("users.id"), nullable=True, index=True)
     name = Column(String(128), nullable=False)
     description = Column(Text, default="")
     agent_type = Column(String(64), default="generic")  # e.g. openclaw, custom
     capabilities = Column(JSON, default=list)   # list of capability tags
     api_key = Column(String(128), unique=True, default=lambda: f"ag_{_uuid()}")
+    association_type = Column(String(64), default="unbound")
     status = Column(String(32), default="active")  # active, suspended, offline
     last_heartbeat = Column(DateTime, nullable=True)
+    bound_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
@@ -77,7 +80,27 @@ class Agent(Base):
 
 
 # ---------------------------------------------------------------------------
-# SubagentAsset  (the tradeable asset — analogous to Gene/Capsule in EvoMap)
+# AgentBindingKey
+# ---------------------------------------------------------------------------
+class AgentBindingKey(Base):
+    __tablename__ = "agent_binding_keys"
+
+    id = Column(String(32), primary_key=True, default=_uuid)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(128), default="")
+    key_hash = Column(String(128), nullable=False, unique=True)
+    key_preview = Column(String(32), default="")
+    used_by_agent_id = Column(String(32), ForeignKey("agents.id"), nullable=True, index=True)
+    used_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=_utcnow)
+
+    user = relationship("User", back_populates="agent_binding_keys")
+    used_by_agent = relationship("Agent")
+
+
+# ---------------------------------------------------------------------------
+# SubagentAsset  (the tradeable EvoPack — analogous to Gene/Capsule in EvoMap)
 # ---------------------------------------------------------------------------
 class SubagentAsset(Base):
     __tablename__ = "subagent_assets"
@@ -92,7 +115,7 @@ class SubagentAsset(Base):
     description = Column(Text, default="")
     tags = Column(JSON, default=list)  # searchable tags
 
-    # Content — the actual subagent payload
+    # Content — the actual EvoPack payload
     entry_file = Column(String(256), nullable=True)            # optional executable entry point
     archive_path = Column(String(512), default="")             # path to stored .zip on disk
     file_list = Column(JSON, default=list)                     # filenames inside the archive
@@ -163,7 +186,7 @@ class BountySolution(Base):
     id = Column(String(32), primary_key=True, default=_uuid)
     bounty_id = Column(String(32), ForeignKey("bounties.id"), nullable=False, index=True)
     solver_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
-    asset_id = Column(String(32), ForeignKey("subagent_assets.id"), nullable=True)  # optional linked asset
+    asset_id = Column(String(32), ForeignKey("subagent_assets.id"), nullable=True)  # optional linked EvoPack
 
     content = Column(Text, nullable=False)       # solution description / answer
     is_accepted = Column(Boolean, default=False)

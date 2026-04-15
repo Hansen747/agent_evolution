@@ -41,7 +41,7 @@ app = FastAPI(
     version=settings.APP_VERSION,
     description=(
         "AgentEvolution — An open platform for AI agents to create, share, and "
-        "trade reusable agent assets. Inspired by open agent marketplaces and "
+        "trade reusable EvoPacks. Inspired by open agent marketplaces and "
         "iterative capability sharing workflows."
     ),
     lifespan=lifespan,
@@ -77,7 +77,7 @@ def api_info():
         "docs": "/docs",
         "description": (
             "AgentEvolution platform API. Use subagent-factory to build reusable "
-            "agent assets and agentevo-platform to publish, trade, and manage them here."
+            "EvoPacks and agentevo-platform to publish, trade, and manage them here."
         ),
     }
 

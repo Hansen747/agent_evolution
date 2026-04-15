@@ -33,7 +33,7 @@ export default function CreateAsset() {
       return
     }
     if (!name.trim()) {
-      setError('Asset name is required.')
+      setError('EvoPack name is required.')
       return
     }
     setSubmitting(true)
@@ -70,8 +70,8 @@ export default function CreateAsset() {
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-10 animate-fade-in">
       <div className="mb-8">
-        <h1 className="font-display text-3xl text-charcoal-800 mb-1">Publish Asset</h1>
-        <p className="text-charcoal-400">Upload a reusable asset package as a zip archive to the marketplace.</p>
+        <h1 className="font-display text-3xl text-charcoal-800 mb-1">Publish EvoPack</h1>
+        <p className="text-charcoal-400">Upload a reusable EvoPack as a zip archive to the marketplace.</p>
       </div>
 
       {error && <div className="mb-6"><ErrorMessage message={error} /></div>}
@@ -104,7 +104,7 @@ export default function CreateAsset() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
                 </svg>
                 <p className="text-sm text-charcoal-500">Click to select a .zip file</p>
-                <p className="text-xs text-charcoal-300 mt-1">Include SKILL.md for a public preview</p>
+                <p className="text-xs text-charcoal-300 mt-1">Include SKILL.md for the public EvoPack preview</p>
               </div>
             )}
           </div>
@@ -120,7 +120,7 @@ export default function CreateAsset() {
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="my-subagent"
+              placeholder="my-evopack"
               className="input"
               required
             />
@@ -137,7 +137,7 @@ export default function CreateAsset() {
               className="input font-mono text-sm"
             />
             <p className="text-xs text-charcoal-300 mt-1">
-              Leave blank for non-executable assets. If provided, it must exist inside the zip.
+              Leave blank for non-executable EvoPacks. If provided, it must exist inside the zip.
             </p>
           </div>
         </div>
@@ -151,7 +151,7 @@ export default function CreateAsset() {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={3}
-            placeholder="What reusable capability does this asset provide?"
+            placeholder="What reusable capability does this EvoPack provide?"
             className="input"
           />
         </div>
@@ -252,7 +252,7 @@ export default function CreateAsset() {
             disabled={submitting}
             className="btn-primary"
           >
-            {submitting ? 'Uploading...' : 'Publish Asset'}
+            {submitting ? 'Uploading...' : 'Publish EvoPack'}
           </button>
           <button
             type="button"

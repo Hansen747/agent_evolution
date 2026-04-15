@@ -1,9 +1,9 @@
 """
-Asset API: publish, search, retrieve, rate, download, and manage subagent assets.
+EvoPack API: publish, search, retrieve, rate, download, and manage reusable bundles.
 
-Assets are uploaded as .zip archives. The only required in-archive file is
+EvoPacks are uploaded as .zip archives. The only required in-archive file is
 SKILL.md, which is extracted for public preview. An executable entry file is
-optional and can be declared for assets that support direct execution.
+optional and can be declared for EvoPacks that support direct execution.
 """
 
 import json
@@ -23,8 +23,8 @@ from agentevo.core.security import get_current_user_id
 from agentevo.core.scoring import compute_asset_score
 from agentevo.models.models import SubagentAsset, User, Trade, OperationLog
 from agentevo.api.schemas import (
-    AssetUpdateRequest, AssetResponse,
-    AssetBriefResponse, AssetRateRequest,
+    EvoPackUpdateRequest, EvoPackResponse,
+    EvoPackBriefResponse, EvoPackRateRequest,
     PaginatedResponse, MessageResponse,
 )
 
@@ -116,9 +116,9 @@ def _recompute_score(asset: SubagentAsset):
 
 # ---- Publish & CRUD -------------------------------------------------------
 
-@router.post("/", response_model=AssetResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=EvoPackResponse, status_code=status.HTTP_201_CREATED)
 async def publish_asset(
-    file: UploadFile = File(..., description="Zip archive containing the subagent package"),
+    file: UploadFile = File(..., description="Zip archive containing the EvoPack bundle"),
     name: str = Form(..., min_length=1, max_length=128),
     entry_file: Optional[str] = Form(None),
     description: str = Form(""),
@@ -130,11 +130,11 @@ async def publish_asset(
     parent_asset_id: Optional[str] = Form(None),
     supersedes_id: Optional[str] = Form(None),
     evolution_note: str = Form(""),
-    agent_id: Optional[str] = Query(None, description="Agent that produced this asset"),
+    agent_id: Optional[str] = Query(None, description="Agent that produced this EvoPack"),
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    """Publish a new subagent asset by uploading a zip archive."""
+    """Publish a new EvoPack by uploading a zip archive."""
     _ensure_storage()
 
     # Parse JSON form fields
@@ -155,7 +155,7 @@ async def publish_asset(
     data = await file.read()
     file_list, skill_md = _validate_zip(data, entry_file)
 
-    # Read entry code for quality estimation when an executable entry is declared.
+    # Read entry code for quality estimation when an executable EvoPack entry is declared.
     entry_code = ""
     if entry_file:
         try:
@@ -200,7 +200,7 @@ async def publish_asset(
     db.refresh(asset)
 
     # Log the operation
-    _log_operation(db, agent_id, user_id, "publish_asset", "subagent_asset", asset.id)
+    _log_operation(db, agent_id, user_id, "publish_evopack", "evopack", asset.id)
 
     return asset
 
@@ -217,7 +217,7 @@ def list_assets(
     max_price: Optional[float] = None,
     db: Session = Depends(get_db),
 ):
-    """Browse and search the asset marketplace."""
+    """Browse and search the EvoPack marketplace."""
     query = db.query(SubagentAsset).filter(SubagentAsset.is_listed == True)
 
     # Text search on name / description
@@ -254,33 +254,33 @@ def list_assets(
     items = query.offset((page - 1) * page_size).limit(page_size).all()
 
     return PaginatedResponse(
-        items=[AssetBriefResponse.model_validate(a) for a in items],
+        items=[EvoPackBriefResponse.model_validate(a) for a in items],
         total=total,
         page=page,
         page_size=page_size,
     )
 
 
-@router.get("/me/published", response_model=list[AssetBriefResponse])
+@router.get("/me/published", response_model=list[EvoPackBriefResponse])
 def my_assets(
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    """List assets published by the current user."""
+    """List EvoPacks published by the current user."""
     return db.query(SubagentAsset).filter(SubagentAsset.creator_id == user_id).all()
 
 
-@router.get("/{asset_id}", response_model=AssetResponse)
+@router.get("/{asset_id}", response_model=EvoPackResponse)
 def get_asset(asset_id: str, db: Session = Depends(get_db)):
     """
-    Get full metadata of an asset (public).
+    Get full metadata of an EvoPack (public).
 
     Includes SKILL.md content and file list for preview.
     Source code is NOT included — use the download endpoint to get the zip.
     """
     asset = db.query(SubagentAsset).filter(SubagentAsset.id == asset_id).first()
     if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found")
+        raise HTTPException(status_code=404, detail="EvoPack not found")
     return asset
 
 
@@ -292,13 +292,13 @@ def get_asset_file(
     db: Session = Depends(get_db),
 ):
     """
-    Read a specific file from the asset archive.
+    Read a specific file from the EvoPack archive.
 
-    Only the asset creator or users who have purchased it can view files.
+    Only the EvoPack creator or users who have purchased it can view files.
     """
     asset = db.query(SubagentAsset).filter(SubagentAsset.id == asset_id).first()
     if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found")
+        raise HTTPException(status_code=404, detail="EvoPack not found")
 
     # Authorization: creator or purchaser
     is_creator = asset.creator_id == user_id
@@ -309,7 +309,7 @@ def get_asset_file(
     is_free = asset.price <= 0
 
     if not (is_creator or has_purchased or is_free):
-        raise HTTPException(status_code=403, detail="Purchase this asset to view its files")
+        raise HTTPException(status_code=403, detail="Purchase this EvoPack to view its files")
 
     if not asset.archive_path or not os.path.exists(asset.archive_path):
         raise HTTPException(status_code=404, detail="Archive not found on disk")
@@ -325,7 +325,7 @@ def get_asset_file(
     return Response(content=content, media_type="application/octet-stream")
 
 
-@router.put("/{asset_id}", response_model=AssetResponse)
+@router.put("/{asset_id}", response_model=EvoPackResponse)
 async def update_asset(
     asset_id: str,
     file: Optional[UploadFile] = File(None, description="New zip archive (optional)"),
@@ -336,12 +336,12 @@ async def update_asset(
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    """Update an asset you own. Optionally re-upload the zip archive."""
+    """Update an EvoPack you own. Optionally re-upload the zip archive."""
     asset = db.query(SubagentAsset).filter(
         SubagentAsset.id == asset_id, SubagentAsset.creator_id == user_id
     ).first()
     if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found or not owned by you")
+        raise HTTPException(status_code=404, detail="EvoPack not found or not owned by you")
 
     if description is not None:
         asset.description = description
@@ -390,12 +390,12 @@ def delete_asset(
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    """Delist / delete an asset and its archive."""
+    """Delist / delete an EvoPack and its archive."""
     asset = db.query(SubagentAsset).filter(
         SubagentAsset.id == asset_id, SubagentAsset.creator_id == user_id
     ).first()
     if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found or not owned by you")
+        raise HTTPException(status_code=404, detail="EvoPack not found or not owned by you")
 
     # Remove archive from disk
     if asset.archive_path and os.path.exists(asset.archive_path):
@@ -403,7 +403,7 @@ def delete_asset(
 
     db.delete(asset)
     db.commit()
-    return MessageResponse(message="Asset deleted")
+    return MessageResponse(message="EvoPack deleted")
 
 
 # ---- Rating ---------------------------------------------------------------
@@ -411,14 +411,14 @@ def delete_asset(
 @router.post("/{asset_id}/rate", response_model=MessageResponse)
 def rate_asset(
     asset_id: str,
-    req: AssetRateRequest,
+    req: EvoPackRateRequest,
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    """Rate an asset (simple running average)."""
+    """Rate an EvoPack (simple running average)."""
     asset = db.query(SubagentAsset).filter(SubagentAsset.id == asset_id).first()
     if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found")
+        raise HTTPException(status_code=404, detail="EvoPack not found")
 
     # Update running average
     total_rating = asset.avg_rating * asset.rating_count + req.rating
@@ -440,13 +440,13 @@ def download_asset(
     db: Session = Depends(get_db),
 ):
     """
-    Download a free asset's zip archive. Increments counters.
+    Download a free EvoPack zip archive. Increments counters.
 
-    For paid assets, use /trades/purchase first then download.
+    For paid EvoPacks, use /trades/purchase first then download.
     """
     asset = db.query(SubagentAsset).filter(SubagentAsset.id == asset_id).first()
     if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found")
+        raise HTTPException(status_code=404, detail="EvoPack not found")
 
     is_creator = asset.creator_id == user_id
     has_purchased = db.query(Trade).filter(
@@ -456,7 +456,7 @@ def download_asset(
     if asset.price > 0 and not is_creator and not has_purchased:
         raise HTTPException(
             status_code=400,
-            detail="This asset has a price. Use /trades/purchase first.",
+            detail="This EvoPack has a price. Use /trades/purchase first.",
         )
 
     if not asset.archive_path or not os.path.exists(asset.archive_path):

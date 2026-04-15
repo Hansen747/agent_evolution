@@ -53,16 +53,48 @@ class AgentRegisterRequest(BaseModel):
     capabilities: List[str] = []
 
 
+class AgentCredentialLinkRequest(BaseModel):
+    api_key: str = Field(..., min_length=1, max_length=128)
+
+
+class AgentBindingKeyCreateRequest(BaseModel):
+    name: str = Field("", max_length=128)
+
+
+class AgentBindWithKeyRequest(BaseModel):
+    binding_key: str = Field(..., min_length=1, max_length=256)
+
+
+class AgentBindingKeyResponse(BaseModel):
+    id: str
+    user_id: str
+    name: str
+    key_preview: str
+    used_by_agent_id: Optional[str] = None
+    used_at: Optional[datetime] = None
+    revoked_at: Optional[datetime] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AgentBindingKeyCreateResponse(AgentBindingKeyResponse):
+    binding_key: str
+
+
 class AgentResponse(BaseModel):
     id: str
-    owner_id: str
+    owner_id: Optional[str] = None
     name: str
     description: str
     agent_type: str
     capabilities: list
     api_key: str
+    association_type: str
     status: str
     last_heartbeat: Optional[datetime] = None
+    bound_at: Optional[datetime] = None
     created_at: datetime
 
     class Config:
@@ -75,16 +107,16 @@ class AgentHeartbeatRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# SubagentAsset
+# EvoPack
 # ---------------------------------------------------------------------------
-class AssetUpdateRequest(BaseModel):
+class EvoPackUpdateRequest(BaseModel):
     description: Optional[str] = None
     tags: Optional[List[str]] = None
     price: Optional[float] = None
     is_listed: Optional[bool] = None
 
 
-class AssetResponse(BaseModel):
+class EvoPackResponse(BaseModel):
     id: str
     creator_id: str
     agent_id: Optional[str] = None
@@ -117,8 +149,8 @@ class AssetResponse(BaseModel):
         from_attributes = True
 
 
-class AssetBriefResponse(BaseModel):
-    """Lightweight asset listing without full details."""
+class EvoPackBriefResponse(BaseModel):
+    """Lightweight EvoPack listing without full details."""
     id: str
     creator_id: str
     name: str
@@ -138,7 +170,7 @@ class AssetBriefResponse(BaseModel):
         from_attributes = True
 
 
-class AssetRateRequest(BaseModel):
+class EvoPackRateRequest(BaseModel):
     rating: float = Field(..., ge=0, le=5)
     comment: str = ""
 
@@ -174,7 +206,7 @@ class BountyResponse(BaseModel):
 
 class SolutionSubmitRequest(BaseModel):
     content: str
-    asset_id: Optional[str] = None  # optionally link a subagent asset
+    asset_id: Optional[str] = None  # optionally link an EvoPack
 
 
 class SolutionResponse(BaseModel):

@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { assets as assetsApi } from '../../api/client'
-import type { AssetBrief } from '../../types'
+import type { EvoPackBrief } from '../../types'
 import { PageLoader, EmptyState, ErrorMessage, StarRating } from '../../components/Ui'
 
 export default function MyAssets() {
-  const [assetsList, setAssetsList] = useState<AssetBrief[]>([])
+  const [assetsList, setAssetsList] = useState<EvoPackBrief[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [msg, setMsg] = useState('')
@@ -25,10 +25,10 @@ export default function MyAssets() {
   useEffect(() => { fetchAssets() }, [])
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this asset?')) return
+    if (!confirm('Delete this EvoPack?')) return
     try {
       await assetsApi.delete(id)
-      setMsg('Asset deleted')
+      setMsg('EvoPack deleted')
       fetchAssets()
     } catch (e: unknown) {
       setMsg(e instanceof Error ? e.message : 'Delete failed')
@@ -39,11 +39,11 @@ export default function MyAssets() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="font-display text-3xl text-charcoal-800 mb-1">My Assets</h1>
-          <p className="text-charcoal-400">Reusable asset packages you've published on the platform.</p>
+          <h1 className="font-display text-3xl text-charcoal-800 mb-1">My EvoPacks</h1>
+          <p className="text-charcoal-400">Reusable EvoPacks you've published on the platform.</p>
         </div>
         <Link to="/dashboard/assets/new" className="btn-primary text-sm shrink-0">
-          Publish New Asset
+          Publish New EvoPack
         </Link>
       </div>
 
@@ -55,9 +55,9 @@ export default function MyAssets() {
         <ErrorMessage message={error} onRetry={fetchAssets} />
       ) : assetsList.length === 0 ? (
         <EmptyState
-          title="No assets published"
-          description="Upload an asset package zip archive to share it on the marketplace."
-          action={<Link to="/dashboard/assets/new" className="btn-primary text-sm">Publish your first asset</Link>}
+          title="No EvoPacks published"
+          description="Upload an EvoPack zip archive to share it on the marketplace."
+          action={<Link to="/dashboard/assets/new" className="btn-primary text-sm">Publish your first EvoPack</Link>}
         />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">

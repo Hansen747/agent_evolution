@@ -3,15 +3,15 @@ End-to-end test for the AgentEvolution platform.
 
 Tests the full workflow:
   1. Register two users
-  2. Register an agent
-  3. Create & publish a subagent asset (zip upload)
-  4. Search & browse assets
-  5. Post a bounty
-  6. Submit a solution
-  7. Accept the solution
-  8. Purchase a paid asset
-  9. Check trade history
-  10. Record operation logs
+    2. Self-register and bind agents in all supported association modes
+    3. Create & publish an EvoPack (zip upload)
+    4. Search & browse EvoPacks
+    5. Post a bounty
+    6. Submit a solution
+    7. Accept the solution
+    8. Purchase a paid EvoPack
+    9. Check trade history
+    10. Record operation logs
 """
 
 import io
@@ -114,8 +114,72 @@ def test_full_workflow():
     print(f"    Profile: {profile['username']}, credits={profile['credits']}")
     assert profile["credits"] == 100.0
 
-    # ---- 4. Register agent ----
-    print("\n[4] Register agent...")
+    # ---- 4. Agent self-registers, then binds with a one-time user key ----
+    print("\n[4] Agent self-registers, then binds with a one-time user key...")
+    r = requests.post(f"{API}/agents/self-register", json={
+        "name": "SelfBoundBot",
+        "description": "Self-registered agent",
+        "agent_type": "openclaw",
+        "capabilities": ["research"]
+    })
+    assert r.status_code == 201, f"Self-register agent failed: {r.text}"
+    self_bound_agent = r.json()
+    assert self_bound_agent["owner_id"] is None
+    assert self_bound_agent["association_type"] == "unbound"
+    self_bound_key = self_bound_agent["api_key"]
+
+    r = requests.post(f"{API}/agents/binding-keys", json={"name": "Alice primary bind key"}, headers=alice_h)
+    assert r.status_code == 201, f"Create binding key failed: {r.text}"
+    binding_key = r.json()["binding_key"]
+
+    r = requests.post(
+        f"{API}/agents/bind-with-key",
+        json={"binding_key": binding_key},
+        headers={"X-Agent-Key": self_bound_key},
+    )
+    assert r.status_code == 200, f"Bind self-registered agent with key failed: {r.text}"
+    self_bound_agent = r.json()
+    assert self_bound_agent["owner_id"] == alice_id
+    assert self_bound_agent["association_type"] == "agent_self_bound"
+    print(f"    Agent self-bound: {self_bound_agent['name']} (id={self_bound_agent['id']})")
+
+    r = requests.post(f"{API}/agents/self-register", json={
+        "name": "SecondSelfBoundBot",
+        "description": "Should fail to reuse binding key",
+        "agent_type": "generic",
+        "capabilities": ["analysis"]
+    })
+    assert r.status_code == 201, f"Prepare second self-register agent failed: {r.text}"
+    second_self_bound_key = r.json()["api_key"]
+
+    r = requests.post(
+        f"{API}/agents/bind-with-key",
+        json={"binding_key": binding_key},
+        headers={"X-Agent-Key": second_self_bound_key},
+    )
+    assert r.status_code == 400, f"Binding key should be one-time use: {r.text}"
+    print("    One-time binding key cannot be reused")
+
+    # ---- 5. User links an existing agent by credential ----
+    print("\n[5] User links an existing agent by credential...")
+    r = requests.post(f"{API}/agents/self-register", json={
+        "name": "ClaimedBot",
+        "description": "Registered elsewhere, later claimed by user",
+        "agent_type": "generic",
+        "capabilities": ["analysis"]
+    })
+    assert r.status_code == 201, f"Prepare claimable agent failed: {r.text}"
+    claimed_agent = r.json()
+
+    r = requests.post(f"{API}/agents/link-existing", json={"api_key": claimed_agent["api_key"]}, headers=alice_h)
+    assert r.status_code == 200, f"Link existing agent failed: {r.text}"
+    claimed_agent = r.json()
+    assert claimed_agent["owner_id"] == alice_id
+    assert claimed_agent["association_type"] == "user_added_by_credential"
+    print(f"    Agent linked by credential: {claimed_agent['name']} (id={claimed_agent['id']})")
+
+    # ---- 6. User manually registers an agent ----
+    print("\n[6] User manually registers an agent...")
     r = requests.post(f"{API}/agents/", json={
         "name": "AliceBot",
         "description": "Alice's research agent",
@@ -125,10 +189,21 @@ def test_full_workflow():
     assert r.status_code == 201, f"Register agent failed: {r.text}"
     agent = r.json()
     agent_id = agent["id"]
-    print(f"    Agent registered: {agent['name']} (id={agent_id}, api_key={agent['api_key'][:16]}...)")
+    assert agent["association_type"] == "user_manual_registered"
+    print(f"    Manual agent registered: {agent['name']} (id={agent_id}, api_key={agent['api_key'][:16]}...)")
 
-    # ---- 5. Publish subagent asset (zip upload) ----
-    print("\n[5] Publish subagent asset (zip upload)...")
+    # ---- 7. Heartbeat using agent credential ----
+    print("\n[7] Agent heartbeat using its own credential...")
+    r = requests.post(
+        f"{API}/agents/{self_bound_agent['id']}/heartbeat",
+        json={"status": "active"},
+        headers={"X-Agent-Key": self_bound_key},
+    )
+    assert r.status_code == 200, f"Credential heartbeat failed: {r.text}"
+    print("    Credential heartbeat OK")
+
+    # ---- 8. Publish EvoPack (zip upload) ----
+    print("\n[8] Publish EvoPack (zip upload)...")
     free_zip = make_zip({
         "web_researcher.py": SUBAGENT_CODE,
         "SKILL.md": SKILL_MD,
@@ -148,15 +223,15 @@ def test_full_workflow():
         },
         headers=alice_h,
     )
-    assert r.status_code == 201, f"Publish asset failed: {r.text}"
+    assert r.status_code == 201, f"Publish EvoPack failed: {r.text}"
     asset = r.json()
     free_asset_id = asset["id"]
-    print(f"    Asset published: {asset['name']} (id={free_asset_id}, quality={asset['quality_score']:.2f}, composite={asset['composite_score']:.2f})")
+    print(f"    EvoPack published: {asset['name']} (id={free_asset_id}, quality={asset['quality_score']:.2f}, composite={asset['composite_score']:.2f})")
     assert "web_researcher.py" in asset["file_list"]
     assert "SKILL.md" in asset["file_list"]
     assert len(asset["skill_md"]) > 0, "SKILL.md should be extracted as public preview"
 
-    # Publish a PAID non-executable asset
+    # Publish a PAID non-executable EvoPack
     paid_zip = make_zip({
         "SKILL.md": "# premium_prompt_pack\nPremium prompt pack with reusable analysis workflows",
         "prompts/system.txt": "You are a premium analysis assistant.",
@@ -173,15 +248,15 @@ def test_full_workflow():
         },
         headers=alice_h,
     )
-    assert r.status_code == 201, f"Publish paid asset failed: {r.text}"
+    assert r.status_code == 201, f"Publish paid EvoPack failed: {r.text}"
     paid_asset = r.json()
     paid_asset_id = paid_asset["id"]
     assert paid_asset["entry_file"] is None
     assert "SKILL.md" in paid_asset["file_list"]
-    print(f"    Paid asset published: premium_prompt_pack (id={paid_asset_id}, price=10.0)")
+    print(f"    Paid EvoPack published: premium_prompt_pack (id={paid_asset_id}, price=10.0)")
 
-    # ---- 6. Search assets ----
-    print("\n[6] Search assets...")
+    # ---- 9. Search EvoPacks ----
+    print("\n[9] Search EvoPacks...")
     r = requests.get(f"{API}/assets/", params={"search": "research"})
     assert r.status_code == 200
     results = r.json()
@@ -192,15 +267,15 @@ def test_full_workflow():
     assert r.status_code == 200
     print(f"    Search tag 'ml': {r.json()['total']} results")
 
-    # ---- 7. Get asset details ----
-    print("\n[7] Get asset details...")
+    # ---- 10. Get EvoPack details ----
+    print("\n[10] Get EvoPack details...")
     r = requests.get(f"{API}/assets/{free_asset_id}")
     assert r.status_code == 200
     detail = r.json()
-    print(f"    Asset detail: {detail['name']}, file_list={detail['file_list']}, skill_md_len={len(detail['skill_md'])}")
+    print(f"    EvoPack detail: {detail['name']}, file_list={detail['file_list']}, skill_md_len={len(detail['skill_md'])}")
 
-    # ---- 8. Download free asset (Bob) ----
-    print("\n[8] Download free asset...")
+    # ---- 11. Download free EvoPack (Bob) ----
+    print("\n[11] Download free EvoPack...")
     r = requests.post(f"{API}/assets/{free_asset_id}/download", headers=bob_h)
     assert r.status_code == 200
     assert r.headers.get("content-type", "").startswith("application/zip") or "zip" in r.headers.get("content-type", "")
@@ -209,14 +284,14 @@ def test_full_workflow():
     assert "web_researcher.py" in zf.namelist()
     print(f"    Bob downloaded zip: {len(r.content)} bytes, files={zf.namelist()}")
 
-    # ---- 9. Rate asset ----
-    print("\n[9] Rate asset...")
+    # ---- 12. Rate EvoPack ----
+    print("\n[12] Rate EvoPack...")
     r = requests.post(f"{API}/assets/{free_asset_id}/rate", json={"rating": 4.5}, headers=bob_h)
     assert r.status_code == 200
     print(f"    Rating result: {r.json()['message']}")
 
-    # ---- 10. Post bounty ----
-    print("\n[10] Post bounty...")
+    # ---- 13. Post bounty ----
+    print("\n[13] Post bounty...")
     r = requests.post(f"{API}/bounties/", json={
         "title": "Need a web scraper for news sites",
         "description": "Looking for a subagent that can scrape and summarise news from major news sites. Must handle paywalls gracefully.",
@@ -232,8 +307,8 @@ def test_full_workflow():
     r = requests.get(f"{API}/auth/me", headers=alice_h)
     print(f"    Alice credits after bounty: {r.json()['credits']}")
 
-    # ---- 11. Submit solution (Bob) ----
-    print("\n[11] Submit solution...")
+    # ---- 14. Submit solution (Bob) ----
+    print("\n[14] Submit solution...")
     r = requests.post(f"{API}/bounties/{bounty_id}/solutions", json={
         "content": "I built a news scraper subagent that handles 5 major news sites including paywall detection via headless browser.",
         "asset_id": None,
@@ -243,15 +318,15 @@ def test_full_workflow():
     solution_id = solution["id"]
     print(f"    Solution submitted by Bob: {solution_id}")
 
-    # ---- 12. List solutions ----
-    print("\n[12] List solutions...")
+    # ---- 15. List solutions ----
+    print("\n[15] List solutions...")
     r = requests.get(f"{API}/bounties/{bounty_id}/solutions")
     assert r.status_code == 200
     solutions = r.json()
     print(f"    Solutions for bounty: {len(solutions)}")
 
-    # ---- 13. Accept solution ----
-    print("\n[13] Accept solution...")
+    # ---- 16. Accept solution ----
+    print("\n[16] Accept solution...")
     r = requests.post(f"{API}/bounties/{bounty_id}/solutions/{solution_id}/accept", headers=alice_h)
     assert r.status_code == 200, f"Accept failed: {r.text}"
     print(f"    Solution accepted: {r.json()['message']}")
@@ -262,8 +337,8 @@ def test_full_workflow():
     print(f"    Bob credits after reward: {bob_credits}")
     assert bob_credits == 120.0  # 100 initial + 20 reward
 
-    # ---- 14. Purchase paid asset (Bob buys Alice's) ----
-    print("\n[14] Purchase paid asset...")
+    # ---- 17. Purchase paid EvoPack (Bob buys Alice's) ----
+    print("\n[17] Purchase paid EvoPack...")
     r = requests.post(f"{API}/trades/purchase", json={
         "asset_id": paid_asset_id,
     }, headers=bob_h)
@@ -277,32 +352,32 @@ def test_full_workflow():
     r = requests.get(f"{API}/auth/me", headers=alice_h)
     print(f"    Alice credits after sale: {r.json()['credits']}")
 
-    # ---- 14b. Download purchased paid asset (Bob) ----
-    print("\n[14b] Download purchased paid asset...")
+    # ---- 18. Download purchased paid EvoPack (Bob) ----
+    print("\n[18] Download purchased paid EvoPack...")
     r = requests.post(f"{API}/assets/{paid_asset_id}/download", headers=bob_h)
-    assert r.status_code == 200, f"Download paid asset failed: {r.status_code}"
-    print(f"    Bob downloaded paid asset zip: {len(r.content)} bytes")
+    assert r.status_code == 200, f"Download paid EvoPack failed: {r.status_code}"
+    print(f"    Bob downloaded paid EvoPack zip: {len(r.content)} bytes")
 
-    # ---- 14c. View file from asset (Bob — purchased) ----
-    print("\n[14c] View file from asset...")
+    # ---- 19. View file from EvoPack (Bob — purchased) ----
+    print("\n[19] View file from EvoPack...")
     r = requests.get(f"{API}/assets/{paid_asset_id}/files/analyser.py", headers=bob_h)
     assert r.status_code == 200, f"View file failed: {r.status_code}"
     print(f"    File content length: {len(r.text)} chars")
     assert "def main(" in r.text
 
-    # ---- 15. Trade history ----
-    print("\n[15] Trade history...")
+    # ---- 20. Trade history ----
+    print("\n[20] Trade history...")
     r = requests.get(f"{API}/trades/history", headers=bob_h)
     assert r.status_code == 200
     history = r.json()
     print(f"    Bob's trades: {history['total']}")
 
-    # ---- 16. Record operation log ----
-    print("\n[16] Record operation log...")
+    # ---- 21. Record operation log ----
+    print("\n[21] Record operation log...")
     r = requests.post(f"{API}/agents/logs", json={
         "agent_id": agent_id,
         "action": "create_subagent",
-        "target_type": "subagent_asset",
+        "target_type": "evopack",
         "target_id": free_asset_id,
         "details": {"method": "factory", "template": "web_researcher"},
         "status": "success",
@@ -310,28 +385,28 @@ def test_full_workflow():
     assert r.status_code == 201, f"Log failed: {r.text}"
     print(f"    Operation logged: {r.json()['action']}")
 
-    # ---- 17. List operation logs ----
-    print("\n[17] List operation logs...")
+    # ---- 22. List operation logs ----
+    print("\n[22] List operation logs...")
     r = requests.get(f"{API}/agents/logs/{agent_id}", headers=alice_h)
     assert r.status_code == 200
     logs = r.json()
     print(f"    Logs for agent: {logs['total']}")
 
-    # ---- 18. My assets ----
-    print("\n[18] My published assets...")
+    # ---- 23. My EvoPacks ----
+    print("\n[23] My published EvoPacks...")
     r = requests.get(f"{API}/assets/me/published", headers=alice_h)
     assert r.status_code == 200
     my_assets = r.json()
-    print(f"    Alice's assets: {len(my_assets)}")
+    print(f"    Alice's EvoPacks: {len(my_assets)}")
 
-    # ---- 19. Agent heartbeat ----
-    print("\n[19] Agent heartbeat...")
+    # ---- 24. Agent heartbeat ----
+    print("\n[24] Agent heartbeat...")
     r = requests.post(f"{API}/agents/{agent_id}/heartbeat", json={"status": "active"}, headers=alice_h)
     assert r.status_code == 200
     print(f"    Heartbeat: {r.json()['message']}")
 
-    # ---- 20. Test SubagentFactory locally ----
-    print("\n[20] Test SubagentFactory locally...")
+    # ---- 25. Test SubagentFactory locally ----
+    print("\n[25] Test SubagentFactory locally...")
     factory_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "subagent-factory", "factory.py")
     spec = importlib.util.spec_from_file_location("subagent_factory_skill", factory_path)
     assert spec is not None and spec.loader is not None
@@ -359,10 +434,10 @@ def test_full_workflow():
         },
     )
     assert result["success"]
-    print(f"    Asset scaffolded: {result['asset_dir']}")
+    print(f"    EvoPack scaffolded: {result['asset_dir']}")
 
     assets = factory.list_assets()
-    print(f"    Workspace assets: {len(assets)}")
+    print(f"    Workspace EvoPacks: {len(assets)}")
 
     validation = platform_helper.validate_asset("test-researcher", entry_file="runner.py")
     assert validation["success"], validation

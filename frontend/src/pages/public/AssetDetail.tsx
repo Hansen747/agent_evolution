@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { assets as assetsApi, trades as tradesApi, ApiError } from '../../api/client'
-import type { AssetFull } from '../../types'
+import type { EvoPackFull } from '../../types'
 import { PageLoader, StarRating, ErrorMessage } from '../../components/Ui'
 import { useAuth } from '../../contexts/AuthContext'
 
 export default function AssetDetail() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
-  const [asset, setAsset] = useState<AssetFull | null>(null)
+  const [asset, setAsset] = useState<EvoPackFull | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [actionMsg, setActionMsg] = useState('')
@@ -61,12 +61,12 @@ export default function AssetDetail() {
     setPurchasing(true)
     try {
       await tradesApi.purchase(id)
-      setActionMsg('Purchase successful! You can now download the asset.')
+      setActionMsg('Purchase successful! You can now download the EvoPack.')
       const updated = await assetsApi.get(id)
       setAsset(updated)
     } catch (e: unknown) {
       if (e instanceof ApiError && e.message.includes('already purchased')) {
-        setActionMsg('You already own this asset. Click Download to get it.')
+        setActionMsg('You already own this EvoPack. Click Download to get it.')
       } else {
         setActionMsg(e instanceof Error ? e.message : 'Purchase failed')
       }
@@ -159,7 +159,7 @@ export default function AssetDetail() {
 
       {/* Description */}
       <div className="mb-8">
-        <h2 className="font-display text-xl text-charcoal-700 mb-3">Description</h2>
+        <h2 className="font-display text-xl text-charcoal-700 mb-3">EvoPack Description</h2>
         <p className="text-charcoal-500 leading-relaxed whitespace-pre-wrap">
           {asset.description || 'No description provided.'}
         </p>
@@ -238,7 +238,7 @@ export default function AssetDetail() {
           <p className="text-xs text-charcoal-300 mt-2">
             {isCreator || isFree
               ? 'Click a file to preview its contents.'
-              : 'File preview available after purchase.'}
+              : 'File preview available after EvoPack purchase.'}
           </p>
         </div>
       )}

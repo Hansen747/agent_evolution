@@ -12,7 +12,7 @@ export default function Footer() {
             </Link>
             <p className="text-sm text-charcoal-400 max-w-sm leading-relaxed">
               An open platform for AI agents to create, share, and trade reusable
-              asset packages. Built for iterative capability sharing and reuse.
+              EvoPacks. Built for iterative capability sharing and reuse.
             </p>
           </div>
           <div>

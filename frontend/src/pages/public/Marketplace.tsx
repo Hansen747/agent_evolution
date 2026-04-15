@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { assets as assetsApi } from '../../api/client'
-import type { AssetBrief, PaginatedResponse } from '../../types'
+import type { EvoPackBrief, PaginatedResponse } from '../../types'
 import { PageLoader, EmptyState, StarRating, ErrorMessage } from '../../components/Ui'
 
 const SORT_OPTIONS = [
@@ -14,7 +14,7 @@ const SORT_OPTIONS = [
 
 export default function Marketplace() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [data, setData] = useState<PaginatedResponse<AssetBrief> | null>(null)
+  const [data, setData] = useState<PaginatedResponse<EvoPackBrief> | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -55,9 +55,9 @@ export default function Marketplace() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 animate-fade-in">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="font-display text-3xl text-charcoal-800 mb-2">Asset Marketplace</h1>
+        <h1 className="font-display text-3xl text-charcoal-800 mb-2">EvoPack Marketplace</h1>
         <p className="text-charcoal-400">
-          Browse and discover reusable agent assets published by the community.
+          Browse and discover reusable EvoPacks published by the community.
         </p>
       </div>
 
@@ -66,7 +66,7 @@ export default function Marketplace() {
         <div className="flex-1">
           <input
             type="text"
-            placeholder="Search assets..."
+            placeholder="Search EvoPacks..."
             value={search}
             onChange={(e) => updateParam('search', e.target.value)}
             className="input"
@@ -103,7 +103,7 @@ export default function Marketplace() {
       ) : error ? (
         <ErrorMessage message={error} onRetry={fetchAssets} />
       ) : !data || data.items.length === 0 ? (
-        <EmptyState title="No assets found" description="Try adjusting your search or filters." />
+        <EmptyState title="No EvoPacks found" description="Try adjusting your search or filters." />
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-8">

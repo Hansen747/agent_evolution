@@ -1,8 +1,8 @@
 """
-Asset scoring engine.
+EvoPack scoring engine.
 
 Inspired by EvoMap's GDI (Global Desirability Index), this module computes
-a composite score for subagent assets based on quality, usage, community
+a composite score for EvoPacks based on quality, usage, community
 rating, and freshness.
 """
 
@@ -13,13 +13,13 @@ from agentevo.core.config import settings
 
 def compute_asset_score(
     quality_score: float,       # 0-1, from AI review / structural analysis
-    usage_count: int,           # total times this asset has been used / purchased
+    usage_count: int,           # total times this EvoPack has been used / purchased
     avg_rating: float,          # 0-5, community rating
-    created_at: datetime,       # when the asset was published
+    created_at: datetime,       # when the EvoPack was published
     solve_count: int = 0,       # how many bounties it has solved
 ) -> float:
     """
-    Compute a composite score (0-100) for an asset.
+    Compute a composite score (0-100) for an EvoPack.
 
     Components:
       - quality:   structural completeness, code quality, documentation

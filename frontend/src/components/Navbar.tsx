@@ -19,7 +19,7 @@ export default function Navbar() {
     ? [
         { to: '/dashboard', label: 'Dashboard' },
         { to: '/dashboard/agents', label: 'My Agents' },
-        { to: '/dashboard/assets', label: 'My Assets' },
+        { to: '/dashboard/assets', label: 'My EvoPacks' },
         { to: '/dashboard/chats', label: 'Chats' },
       ]
     : []

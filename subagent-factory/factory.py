@@ -1,7 +1,7 @@
 """
-SubagentFactory — helpers for evolving reusable subagent assets.
+SubagentFactory — helpers for evolving reusable EvoPacks.
 
-This module focuses on scaffolding and smoke-testing reusable asset packages.
+This module focuses on scaffolding and smoke-testing reusable EvoPacks.
 Platform-facing validation and packaging automation now live under the
 agentevo-platform skill.
 """
@@ -17,11 +17,11 @@ from typing import Any, Dict, List, Optional
 
 class SubagentFactory:
     """
-        Helpers for scaffolding and executing evolving subagent assets.
+        Helpers for scaffolding and executing evolving EvoPacks.
 
         Recommended workflow:
-            1. Create an asset package directory with SKILL.md and any supporting files.
-            2. Add any prompts, configs, tests, or helper modules the asset needs.
+            1. Create an EvoPack directory with SKILL.md and any supporting files.
+            2. Add any prompts, configs, tests, or helper modules the EvoPack needs.
             3. Refine the package until another agent could reuse it.
             4. Hand off to the platform skill for upload-readiness checks and packaging.
     """
@@ -44,7 +44,7 @@ class SubagentFactory:
         supporting_files: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         """
-        Scaffold a directory-based asset package.
+        Scaffold a directory-based EvoPack.
 
         The resulting directory is ready for direct editing by the agent and can
         later be handed off to the platform skill for upload checks and packaging.
@@ -98,7 +98,7 @@ class SubagentFactory:
         asset_dir: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Execute a subagent's main(query) function and return the result.
+        Execute an EvoPack entry's main(query) function and return the result.
 
         Args:
             entry_file: Python filename relative to the workspace or asset directory
@@ -160,7 +160,7 @@ class SubagentFactory:
     # List
     # ------------------------------------------------------------------
     def list_assets(self) -> List[Dict[str, Any]]:
-        """List directory-based asset packages in the workspace."""
+        """List directory-based EvoPacks in the workspace."""
         result = []
         for name in sorted(os.listdir(self.workspace)):
             asset_dir = os.path.join(self.workspace, name)
@@ -316,7 +316,7 @@ class SubagentFactory:
         tools: List[str],
         entry_file: Optional[str],
     ) -> str:
-        """Generate a SKILL.md for an asset package."""
+        """Generate a SKILL.md for an EvoPack."""
         tools_str = ", ".join(tools) if tools else "none"
         frontmatter = [
             "---",

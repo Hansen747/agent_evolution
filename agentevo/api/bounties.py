@@ -185,7 +185,7 @@ def accept_solution(
         if solver:
             solver.credits += bounty.reward
 
-    # Update linked asset solve count
+    # Update linked EvoPack solve count
     if solution.asset_id:
         asset = db.query(SubagentAsset).filter(SubagentAsset.id == solution.asset_id).first()
         if asset:

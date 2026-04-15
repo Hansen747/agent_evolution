@@ -24,6 +24,11 @@ function authHeaders(): Record<string, string> {
   return h
 }
 
+function agentHeaders(agentKey: string, extra: Record<string, string> = {}): Record<string, string> {
+  const h: Record<string, string> = { ...authHeaders(), 'X-Agent-Key': agentKey, ...extra }
+  return h
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
@@ -62,8 +67,8 @@ function del<T>(path: string): Promise<T> {
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 import type {
-  TokenResponse, UserProfile, AgentResponse,
-  AssetBrief, AssetFull, BountyResponse, SolutionResponse,
+  TokenResponse, UserProfile, AgentResponse, AgentBindingKeyResponse, AgentBindingKeyCreateResponse,
+  EvoPackBrief, EvoPackFull, BountyResponse, SolutionResponse,
   TradeResponse, PaginatedResponse, OperationLogResponse,
   ExpertResponse, ChatSessionResponse, ChatMessageResponse,
 } from '../types'
@@ -81,18 +86,60 @@ export const auth = {
 export const agents = {
   list: () => get<AgentResponse[]>('/agents/'),
   get: (id: string) => get<AgentResponse>(`/agents/${id}`),
+  selfRegister: (data: { name: string; description?: string; agent_type?: string; capabilities?: string[] }) =>
+    post<AgentResponse>('/agents/self-register', data),
   register: (data: { name: string; description?: string; agent_type?: string; capabilities?: string[] }) =>
     post<AgentResponse>('/agents/', data),
+  linkExisting: (api_key: string) => post<AgentResponse>('/agents/link-existing', { api_key }),
+  listBindingKeys: () => get<AgentBindingKeyResponse[]>('/agents/binding-keys'),
+  createBindingKey: (data: { name?: string }) =>
+    post<AgentBindingKeyCreateResponse>('/agents/binding-keys', data),
+  revokeBindingKey: (id: string) => del<{ message: string }>(`/agents/binding-keys/${id}`),
+  bindSelf: async (agentKey: string): Promise<AgentResponse> => {
+    const res = await fetch(`${BASE}/agents/bind-self`, {
+      method: 'POST',
+      headers: agentHeaders(agentKey),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ detail: res.statusText }))
+      throw new ApiError(res.status, body.detail || 'Bind failed')
+    }
+    return res.json()
+  },
+  bindWithKey: async (agentKey: string, binding_key: string): Promise<AgentResponse> => {
+    const res = await fetch(`${BASE}/agents/bind-with-key`, {
+      method: 'POST',
+      headers: agentHeaders(agentKey, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ binding_key }),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ detail: res.statusText }))
+      throw new ApiError(res.status, body.detail || 'Bind failed')
+    }
+    return res.json()
+  },
   delete: (id: string) => del<{ message: string }>(`/agents/${id}`),
   heartbeat: (id: string, data?: { status?: string }) =>
     post<{ message: string }>(`/agents/${id}/heartbeat`, data || {}),
+  heartbeatWithCredential: async (id: string, agentKey: string, data?: { status?: string }) => {
+    const res = await fetch(`${BASE}/agents/${id}/heartbeat`, {
+      method: 'POST',
+      headers: { ...agentHeaders(agentKey, { 'Content-Type': 'application/json' }) },
+      body: JSON.stringify(data || {}),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ detail: res.statusText }))
+      throw new ApiError(res.status, body.detail || 'Heartbeat failed')
+    }
+    return res.json() as Promise<{ message: string }>
+  },
   logs: (agentId: string, page = 1, pageSize = 20) =>
     get<PaginatedResponse<OperationLogResponse>>(`/agents/logs/${agentId}?page=${page}&page_size=${pageSize}`),
 }
 
 // ─── Assets ───────────────────────────────────────────────────────────────────
 
-interface AssetListParams {
+interface EvoPackListParams {
   page?: number
   page_size?: number
   search?: string
@@ -103,7 +150,7 @@ interface AssetListParams {
   max_price?: number
 }
 
-export interface AssetPublishData {
+export interface EvoPackPublishData {
   file: File
   name: string
   entry_file?: string
@@ -118,7 +165,7 @@ export interface AssetPublishData {
   evolution_note?: string
 }
 
-export interface AssetUpdateData {
+export interface EvoPackUpdateData {
   file?: File
   description?: string
   tags?: string[]
@@ -127,18 +174,18 @@ export interface AssetUpdateData {
 }
 
 export const assets = {
-  list: (params: AssetListParams = {}) => {
+  list: (params: EvoPackListParams = {}) => {
     const qs = new URLSearchParams()
     Object.entries(params).forEach(([k, v]) => {
       if (v !== undefined && v !== '') qs.set(k, String(v))
     })
-    return get<PaginatedResponse<AssetBrief>>(`/assets/?${qs}`)
+    return get<PaginatedResponse<EvoPackBrief>>(`/assets/?${qs}`)
   },
 
-  get: (id: string) => get<AssetFull>(`/assets/${id}`),
+  get: (id: string) => get<EvoPackFull>(`/assets/${id}`),
 
-  /** Upload a new asset as a zip archive (multipart/form-data). */
-  publish: async (data: AssetPublishData): Promise<AssetFull> => {
+  /** Upload a new EvoPack as a zip archive (multipart/form-data). */
+  publish: async (data: EvoPackPublishData): Promise<EvoPackFull> => {
     const form = new FormData()
     form.append('file', data.file)
     form.append('name', data.name)
@@ -165,8 +212,8 @@ export const assets = {
     return res.json()
   },
 
-  /** Update an asset, optionally re-uploading a new zip. */
-  update: async (id: string, data: AssetUpdateData): Promise<AssetFull> => {
+  /** Update an EvoPack, optionally re-uploading a new zip. */
+  update: async (id: string, data: EvoPackUpdateData): Promise<EvoPackFull> => {
     const form = new FormData()
     if (data.file) form.append('file', data.file)
     if (data.description !== undefined) form.append('description', data.description)
@@ -191,7 +238,7 @@ export const assets = {
   rate: (id: string, rating: number, comment = '') =>
     post<{ message: string }>(`/assets/${id}/rate`, { rating, comment }),
 
-  /** Download the asset zip archive as a Blob. Triggers browser download. */
+  /** Download the EvoPack zip archive as a Blob. Triggers browser download. */
   download: async (id: string, filename?: string): Promise<void> => {
     const res = await fetch(`${BASE}/assets/${id}/download`, {
       method: 'POST',
@@ -205,7 +252,7 @@ export const assets = {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = filename || `asset-${id}.zip`
+    a.download = filename || `evopack-${id}.zip`
     document.body.appendChild(a)
     a.click()
     a.remove()
@@ -224,7 +271,7 @@ export const assets = {
     return res.text()
   },
 
-  myPublished: () => get<AssetBrief[]>('/assets/me/published'),
+  myPublished: () => get<EvoPackBrief[]>('/assets/me/published'),
 }
 
 // ─── Bounties ─────────────────────────────────────────────────────────────────

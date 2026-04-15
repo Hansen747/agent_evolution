@@ -144,7 +144,7 @@ export default function BountyDetail() {
             <input
               value={solutionAssetId}
               onChange={(e) => setSolutionAssetId(e.target.value)}
-              placeholder="Linked asset ID (optional)"
+              placeholder="Linked EvoPack ID (optional)"
               className="input mb-3"
             />
             <button onClick={handleSubmitSolution} className="btn-primary" disabled={!solutionContent.trim()}>
@@ -173,7 +173,7 @@ export default function BountyDetail() {
                 <p className="text-sm text-charcoal-500 whitespace-pre-wrap">{sol.content}</p>
                 {sol.asset_id && (
                   <p className="text-xs text-charcoal-400 mt-2">
-                    Linked asset: <Link to={`/marketplace/${sol.asset_id}`} className="text-sage-600 underline">{sol.asset_id}</Link>
+                    Linked EvoPack: <Link to={`/marketplace/${sol.asset_id}`} className="text-sage-600 underline">{sol.asset_id}</Link>
                   </p>
                 )}
                 {isPoster && !sol.is_accepted && bounty.status !== 'solved' && (

@@ -1,4 +1,4 @@
-"""Helpers for validating and packaging AgentEvolution asset bundles."""
+"""Helpers for validating and packaging AgentEvolution EvoPacks."""
 
 import ast
 import os
@@ -7,14 +7,14 @@ from typing import Any, Dict, List, Optional
 
 
 class PlatformAssetHelper:
-	"""Validate asset directories against platform upload requirements."""
+	"""Validate EvoPack directories against platform upload requirements."""
 
 	def __init__(self, workspace: str = "./.agentevo/assets"):
 		self.workspace = os.path.abspath(workspace)
 		os.makedirs(self.workspace, exist_ok=True)
 
 	def list_assets(self) -> List[Dict[str, Any]]:
-		"""List asset directories in the workspace that contain SKILL.md."""
+		"""List EvoPack directories in the workspace that contain SKILL.md."""
 		result = []
 		for name in sorted(os.listdir(self.workspace)):
 			asset_dir = os.path.join(self.workspace, name)
@@ -33,7 +33,7 @@ class PlatformAssetHelper:
 		return result
 
 	def validate_asset(self, asset_dir: str, entry_file: Optional[str] = None) -> Dict[str, Any]:
-		"""Validate that an asset directory is upload-ready for the platform."""
+		"""Validate that an EvoPack directory is upload-ready for the platform."""
 		asset_root = self._resolve_asset_dir(asset_dir)
 		errors: List[str] = []
 		warnings: List[str] = []
@@ -43,7 +43,7 @@ class PlatformAssetHelper:
 				"success": False,
 				"asset_dir": asset_root,
 				"entry_file": entry_file,
-				"errors": [f"Asset directory not found: {asset_dir}"],
+				"errors": [f"EvoPack directory not found: {asset_dir}"],
 				"warnings": [],
 				"file_list": [],
 			}
@@ -52,14 +52,14 @@ class PlatformAssetHelper:
 		normalized_entry = entry_file.replace("\\", "/") if entry_file else None
 
 		if not file_list:
-			errors.append("Asset directory is empty.")
+			errors.append("EvoPack directory is empty.")
 
 		if "SKILL.md" not in file_list:
-			errors.append("Asset package must contain SKILL.md at the package root.")
+			errors.append("EvoPack must contain SKILL.md at the package root.")
 
 		if normalized_entry:
 			if normalized_entry not in file_list:
-				errors.append(f"Entry file '{entry_file}' was not found in the asset package.")
+				errors.append(f"Entry file '{entry_file}' was not found in the EvoPack.")
 			else:
 				entry_path = os.path.join(asset_root, *normalized_entry.split("/"))
 				if not normalized_entry.endswith(".py"):
@@ -70,12 +70,12 @@ class PlatformAssetHelper:
 					warnings.extend(signature_check["warnings"])
 		else:
 			warnings.append(
-				"No entry file declared. This asset will be treated as a reusable package rather than a directly executable asset."
+				"No entry file declared. This EvoPack will be treated as a reusable package rather than a directly executable bundle."
 			)
 
 		if not any(file_name not in {normalized_entry, "SKILL.md"} for file_name in file_list):
 			warnings.append(
-				"Asset package only contains SKILL.md and little or no supporting material. Consider bundling prompts, tests, examples, configs, or helper files if they are part of the capability."
+				"EvoPack only contains SKILL.md and little or no supporting material. Consider bundling prompts, tests, examples, configs, or helper files if they are part of the capability."
 			)
 
 		return {
@@ -93,7 +93,7 @@ class PlatformAssetHelper:
 		entry_file: Optional[str] = None,
 		output_name: Optional[str] = None,
 	) -> Dict[str, Any]:
-		"""Package a validated asset directory into a zip archive."""
+		"""Package a validated EvoPack directory into a zip archive."""
 		validation = self.validate_asset(asset_dir=asset_dir, entry_file=entry_file)
 		if not validation["success"]:
 			return validation

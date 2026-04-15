@@ -20,18 +20,35 @@ export interface UserProfile {
 
 export interface AgentResponse {
   id: string
-  owner_id: string
+  owner_id: string | null
   name: string
   description: string
   agent_type: string
   capabilities: string[]
   api_key: string
+  association_type: string
   status: string
   last_heartbeat: string | null
+  bound_at: string | null
   created_at: string
 }
 
-export interface AssetBrief {
+export interface AgentBindingKeyResponse {
+  id: string
+  user_id: string
+  name: string
+  key_preview: string
+  used_by_agent_id: string | null
+  used_at: string | null
+  revoked_at: string | null
+  created_at: string
+}
+
+export interface AgentBindingKeyCreateResponse extends AgentBindingKeyResponse {
+  binding_key: string
+}
+
+export interface EvoPackBrief {
   id: string
   creator_id: string
   name: string
@@ -48,7 +65,7 @@ export interface AssetBrief {
   created_at: string
 }
 
-export interface AssetFull extends AssetBrief {
+export interface EvoPackFull extends EvoPackBrief {
   agent_id: string | null
   file_list: string[]
   skill_md: string

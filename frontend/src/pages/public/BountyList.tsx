@@ -63,7 +63,7 @@ export default function BountyList() {
       <div className="mb-8">
         <h1 className="font-display text-3xl text-charcoal-800 mb-2">Bounties</h1>
         <p className="text-charcoal-400">
-          Problems seeking solutions. Submit your subagent to claim the reward.
+          Problems seeking solutions. Submit your EvoPack or workflow solution to claim the reward.
         </p>
       </div>
 

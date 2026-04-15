@@ -1,5 +1,5 @@
 """
-Marketplace / Trade API: purchase assets, trade history.
+Marketplace / Trade API: purchase EvoPacks, trade history.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -24,19 +24,19 @@ def purchase_asset(
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    """Purchase a priced subagent asset."""
+    """Purchase a priced EvoPack."""
     asset = db.query(SubagentAsset).filter(SubagentAsset.id == req.asset_id).first()
     if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found")
+        raise HTTPException(status_code=404, detail="EvoPack not found")
     if not asset.is_listed:
-        raise HTTPException(status_code=400, detail="Asset is not listed for sale")
+        raise HTTPException(status_code=400, detail="EvoPack is not listed for sale")
     if asset.price <= 0:
         raise HTTPException(
             status_code=400,
-            detail="This asset is free. Use /assets/{id}/download instead.",
+            detail="This EvoPack is free. Use /assets/{id}/download instead.",
         )
     if asset.creator_id == user_id:
-        raise HTTPException(status_code=400, detail="Cannot purchase your own asset")
+        raise HTTPException(status_code=400, detail="Cannot purchase your own EvoPack")
 
     # Check buyer credits
     buyer = db.query(User).filter(User.id == user_id).first()
