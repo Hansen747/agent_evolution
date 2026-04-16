@@ -13,23 +13,46 @@ export default function BountyDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
+  const [showManage, setShowManage] = useState(false)
+  const [manageTitle, setManageTitle] = useState('')
+  const [manageDescription, setManageDescription] = useState('')
+  const [manageTags, setManageTags] = useState('')
+  const [manageReward, setManageReward] = useState('0')
+  const [manageStatus, setManageStatus] = useState<'open' | 'in_progress'>('open')
+  const [manageBusy, setManageBusy] = useState(false)
+  const [manageFeedback, setManageFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(null)
+
   // Solution submission
   const [showSubmit, setShowSubmit] = useState(false)
   const [solutionContent, setSolutionContent] = useState('')
   const [solutionAssetId, setSolutionAssetId] = useState('')
   const [submitMsg, setSubmitMsg] = useState('')
 
+  const refreshDetail = async (bountyId: string) => {
+    const [b, s] = await Promise.all([
+      bountiesApi.get(bountyId),
+      bountiesApi.solutions(bountyId),
+    ])
+    setBounty(b)
+    setSolutions(s)
+  }
+
   useEffect(() => {
     if (!id) return
     setLoading(true)
-    Promise.all([
-      bountiesApi.get(id),
-      bountiesApi.solutions(id),
-    ])
-      .then(([b, s]) => { setBounty(b); setSolutions(s) })
+    refreshDetail(id)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
   }, [id])
+
+  useEffect(() => {
+    if (!bounty) return
+    setManageTitle(bounty.title)
+    setManageDescription(bounty.description)
+    setManageTags(bounty.tags.join(', '))
+    setManageReward(String(bounty.reward))
+    setManageStatus(bounty.status === 'in_progress' ? 'in_progress' : 'open')
+  }, [bounty])
 
   const handleSubmitSolution = async () => {
     if (!id || !solutionContent.trim()) return
@@ -43,9 +66,7 @@ export default function BountyDetail() {
       setSolutionAssetId('')
       setShowSubmit(false)
       setSubmitMsg('Solution submitted!')
-      // Refresh bounty
-      const updated = await bountiesApi.get(id)
-      setBounty(updated)
+      await refreshDetail(id)
     } catch (e: unknown) {
       setSubmitMsg(e instanceof Error ? e.message : 'Submission failed')
     }
@@ -55,12 +76,55 @@ export default function BountyDetail() {
     if (!id) return
     try {
       await bountiesApi.acceptSolution(id, solutionId)
-      const [b, s] = await Promise.all([bountiesApi.get(id), bountiesApi.solutions(id)])
-      setBounty(b)
-      setSolutions(s)
+      await refreshDetail(id)
       setSubmitMsg('Solution accepted!')
     } catch (e: unknown) {
       setSubmitMsg(e instanceof Error ? e.message : 'Accept failed')
+    }
+  }
+
+  const handleSaveBounty = async () => {
+    if (!id || !manageTitle.trim() || !manageDescription.trim()) return
+
+    const parsedReward = Number.parseFloat(manageReward || '0')
+    if (Number.isNaN(parsedReward) || parsedReward < 0) {
+      setManageFeedback({ tone: 'error', message: 'Reward must be a valid non-negative number.' })
+      return
+    }
+
+    setManageBusy(true)
+    setManageFeedback(null)
+    try {
+      await bountiesApi.update(id, {
+        title: manageTitle.trim(),
+        description: manageDescription.trim(),
+        tags: manageTags.split(',').map((tag) => tag.trim()).filter(Boolean),
+        reward: parsedReward,
+        status: manageStatus,
+      })
+      await refreshDetail(id)
+      setManageFeedback({ tone: 'success', message: 'Bounty updated.' })
+    } catch (e: unknown) {
+      setManageFeedback({ tone: 'error', message: e instanceof Error ? e.message : 'Update failed' })
+    } finally {
+      setManageBusy(false)
+    }
+  }
+
+  const handleCloseBounty = async () => {
+    if (!id) return
+
+    setManageBusy(true)
+    setManageFeedback(null)
+    try {
+      await bountiesApi.update(id, { status: 'closed' })
+      await refreshDetail(id)
+      setShowManage(false)
+      setManageFeedback({ tone: 'success', message: 'Bounty closed and remaining escrow refunded.' })
+    } catch (e: unknown) {
+      setManageFeedback({ tone: 'error', message: e instanceof Error ? e.message : 'Close failed' })
+    } finally {
+      setManageBusy(false)
     }
   }
 
@@ -69,6 +133,8 @@ export default function BountyDetail() {
   if (!bounty) return null
 
   const isPoster = user?.id === bounty.poster_id
+  const isLocked = ['solved', 'closed'].includes(bounty.status)
+  const canManage = isPoster && !isLocked
   const canSubmit = user && !isPoster && ['open', 'in_progress'].includes(bounty.status)
 
   return (
@@ -116,6 +182,102 @@ export default function BountyDetail() {
           </div>
         )}
       </div>
+
+      {isPoster && (
+        <div className="card p-6 mb-8 border-sage-200 bg-sage-50/40">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="font-display text-xl text-charcoal-700">Manage Bounty</h2>
+              <p className="text-sm text-charcoal-500 mt-1">
+                Update the brief, adjust the reward, move between open and in-progress, or close the bounty to refund remaining escrow.
+              </p>
+            </div>
+            {canManage && (
+              <button onClick={() => setShowManage((value) => !value)} className="btn-secondary text-sm">
+                {showManage ? 'Hide editor' : 'Edit bounty'}
+              </button>
+            )}
+          </div>
+
+          {manageFeedback && (
+            <p className={`mt-4 text-sm ${manageFeedback.tone === 'success' ? 'text-sage-700' : 'text-red-700'}`}>
+              {manageFeedback.message}
+            </p>
+          )}
+
+          {isLocked && (
+            <div className="mt-4 rounded-xl border border-cream-300 bg-white px-4 py-3 text-sm text-charcoal-500">
+              This bounty is {bounty.status} and can no longer be edited from the UI.
+            </div>
+          )}
+
+          {showManage && canManage && (
+            <div className="mt-5 space-y-4 rounded-2xl border border-sage-200 bg-white p-5">
+              <div>
+                <label className="block text-sm font-medium text-charcoal-600 mb-1">Title</label>
+                <input value={manageTitle} onChange={(e) => setManageTitle(e.target.value)} className="input" />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-charcoal-600 mb-1">Description</label>
+                <textarea
+                  value={manageDescription}
+                  onChange={(e) => setManageDescription(e.target.value)}
+                  rows={6}
+                  className="input"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-charcoal-600 mb-1">Tags</label>
+                  <input
+                    value={manageTags}
+                    onChange={(e) => setManageTags(e.target.value)}
+                    className="input"
+                    placeholder="automation, evaluation, scraping"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-charcoal-600 mb-1">Reward</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={manageReward}
+                    onChange={(e) => setManageReward(e.target.value)}
+                    className="input"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-sm font-medium text-charcoal-600 mb-1">Status</label>
+                  <select value={manageStatus} onChange={(e) => setManageStatus(e.target.value as 'open' | 'in_progress')} className="input">
+                    <option value="open">open</option>
+                    <option value="in_progress">in_progress</option>
+                  </select>
+                </div>
+
+                <div className="rounded-xl border border-cream-300 bg-cream-100/70 px-4 py-3 text-sm text-charcoal-500">
+                  Lowering the reward refunds the difference immediately. Closing the bounty refunds the remaining escrow in a separate action.
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 border-t border-cream-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <button onClick={handleCloseBounty} className="btn-danger" disabled={manageBusy || bounty.status === 'closed'}>
+                  Close bounty
+                </button>
+                <button onClick={handleSaveBounty} className="btn-primary" disabled={manageBusy || !manageTitle.trim() || !manageDescription.trim()}>
+                  {manageBusy ? 'Saving...' : 'Save changes'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Solutions */}
       <div className="mb-8">

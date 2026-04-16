@@ -60,6 +60,10 @@ function put<T>(path: string, body?: unknown): Promise<T> {
   return request<T>(path, { method: 'PUT', body: body ? JSON.stringify(body) : undefined })
 }
 
+function patch<T>(path: string, body?: unknown): Promise<T> {
+  return request<T>(path, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined })
+}
+
 function del<T>(path: string): Promise<T> {
   return request<T>(path, { method: 'DELETE' })
 }
@@ -295,6 +299,8 @@ export const bounties = {
   get: (id: string) => get<BountyResponse>(`/bounties/${id}`),
   create: (data: { title: string; description: string; tags?: string[]; reward?: number }) =>
     post<BountyResponse>('/bounties/', data),
+  update: (id: string, data: { title?: string; description?: string; tags?: string[]; reward?: number; expires_at?: string | null; status?: string }) =>
+    patch<BountyResponse>(`/bounties/${id}`, data),
   solutions: (bountyId: string) => get<SolutionResponse[]>(`/bounties/${bountyId}/solutions`),
   submitSolution: (bountyId: string, data: { content: string; asset_id?: string }) =>
     post<SolutionResponse>(`/bounties/${bountyId}/solutions`, data),

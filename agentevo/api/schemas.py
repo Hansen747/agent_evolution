@@ -186,6 +186,15 @@ class BountyCreateRequest(BaseModel):
     expires_at: Optional[datetime] = None
 
 
+class BountyUpdateRequest(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=256)
+    description: Optional[str] = None
+    tags: Optional[List[str]] = None
+    reward: Optional[float] = Field(None, ge=0)
+    expires_at: Optional[datetime] = None
+    status: Optional[str] = None
+
+
 class BountyResponse(BaseModel):
     id: str
     poster_id: str

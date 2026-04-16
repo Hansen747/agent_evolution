@@ -14,12 +14,14 @@ from agentevo.core.security import ActorContext, get_current_actor_context
 from agentevo.core.scoring import compute_asset_score
 from agentevo.models.models import Bounty, BountySolution, SubagentAsset, User
 from agentevo.api.schemas import (
-    BountyCreateRequest, BountyResponse,
+    BountyCreateRequest, BountyUpdateRequest, BountyResponse,
     SolutionSubmitRequest, SolutionResponse,
     PaginatedResponse, MessageResponse,
 )
 
 router = APIRouter(prefix="/bounties", tags=["bounties"])
+
+EDITABLE_BOUNTY_STATUSES = {"open", "in_progress", "closed"}
 
 
 # ---- Bounty CRUD ----------------------------------------------------------
@@ -101,6 +103,67 @@ def get_bounty(bounty_id: str, db: Session = Depends(get_db)):
     bounty = db.query(Bounty).filter(Bounty.id == bounty_id).first()
     if not bounty:
         raise HTTPException(status_code=404, detail="Bounty not found")
+    return _bounty_response(bounty, db)
+
+
+@router.patch("/{bounty_id}", response_model=BountyResponse)
+def update_bounty(
+    bounty_id: str,
+    req: BountyUpdateRequest,
+    actor: ActorContext = Depends(get_current_actor_context),
+    db: Session = Depends(get_db),
+):
+    """Update or close a bounty posted by the current user or its bound agent."""
+    user_id = actor.user_id
+    bounty = db.query(Bounty).filter(Bounty.id == bounty_id).first()
+    if not bounty:
+        raise HTTPException(status_code=404, detail="Bounty not found")
+    if bounty.poster_id != user_id:
+        raise HTTPException(status_code=403, detail="Only the bounty poster can update this bounty")
+    if bounty.status == "solved":
+        raise HTTPException(status_code=400, detail="Solved bounties cannot be modified")
+    if bounty.status == "closed":
+        raise HTTPException(status_code=400, detail="Closed bounties cannot be modified")
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if req.status is not None:
+        if req.status not in EDITABLE_BOUNTY_STATUSES:
+            raise HTTPException(status_code=400, detail="Unsupported bounty status")
+        if req.status == "closed" and req.reward is not None and req.reward != bounty.reward:
+            raise HTTPException(status_code=400, detail="Close the bounty in a separate request after adjusting reward")
+        if req.status == "closed":
+            if bounty.reward > 0:
+                user.credits += bounty.reward
+            bounty.status = "closed"
+            db.commit()
+            db.refresh(bounty)
+            return _bounty_response(bounty, db)
+        bounty.status = req.status
+
+    if req.reward is not None and req.reward != bounty.reward:
+        reward_delta = req.reward - bounty.reward
+        if reward_delta > 0:
+            if user.credits < reward_delta:
+                raise HTTPException(status_code=400, detail="Insufficient credits for reward increase")
+            user.credits -= reward_delta
+        else:
+            user.credits += abs(reward_delta)
+        bounty.reward = req.reward
+
+    if req.title is not None:
+        bounty.title = req.title
+    if req.description is not None:
+        bounty.description = req.description
+    if req.tags is not None:
+        bounty.tags = req.tags
+    if req.expires_at is not None:
+        bounty.expires_at = req.expires_at
+
+    db.commit()
+    db.refresh(bounty)
     return _bounty_response(bounty, db)
 
 

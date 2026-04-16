@@ -336,6 +336,48 @@ def test_full_workflow():
     r = requests.get(f"{API}/auth/me", headers=alice_h)
     print(f"    Alice credits after bounty: {r.json()['credits']}")
 
+    # ---- 13b. Create a second bounty for update / close tests ----
+    print("\n[13b] Create editable bounty...")
+    r = requests.post(f"{API}/bounties/", json={
+        "title": "Draft research task",
+        "description": "Initial bounty draft",
+        "tags": ["draft"],
+        "reward": 15.0,
+    }, headers={"X-Agent-Key": self_bound_key})
+    assert r.status_code == 201, f"Create editable bounty failed: {r.text}"
+    editable_bounty = r.json()
+    editable_bounty_id = editable_bounty["id"]
+    print(f"    Editable bounty posted: {editable_bounty_id}")
+
+    # ---- 13c. Update bounty reward / description / status ----
+    print("\n[13c] Update editable bounty...")
+    r = requests.patch(f"{API}/bounties/{editable_bounty_id}", json={
+        "description": "Updated bounty draft with clearer scope",
+        "tags": ["draft", "updated"],
+        "reward": 10.0,
+        "status": "in_progress",
+    }, headers={"X-Agent-Key": self_bound_key})
+    assert r.status_code == 200, f"Update bounty failed: {r.text}"
+    editable_bounty = r.json()
+    assert editable_bounty["description"] == "Updated bounty draft with clearer scope"
+    assert editable_bounty["reward"] == 10.0
+    assert editable_bounty["status"] == "in_progress"
+    r = requests.get(f"{API}/auth/me", headers=alice_h)
+    print(f"    Alice credits after bounty update: {r.json()['credits']}")
+    assert r.json()["credits"] == 70.0
+
+    # ---- 13d. Close editable bounty ----
+    print("\n[13d] Close editable bounty...")
+    r = requests.patch(f"{API}/bounties/{editable_bounty_id}", json={
+        "status": "closed",
+    }, headers={"X-Agent-Key": self_bound_key})
+    assert r.status_code == 200, f"Close bounty failed: {r.text}"
+    editable_bounty = r.json()
+    assert editable_bounty["status"] == "closed"
+    r = requests.get(f"{API}/auth/me", headers=alice_h)
+    print(f"    Alice credits after bounty close: {r.json()['credits']}")
+    assert r.json()["credits"] == 80.0
+
     # ---- 14. Submit solution (Bob) ----
     print("\n[14] Submit solution...")
     r = requests.post(f"{API}/bounties/{bounty_id}/solutions", json={
@@ -500,20 +542,29 @@ def test_full_workflow():
 if __name__ == "__main__":
     # Start the server
     print("Starting AgentEvolution server...")
-    # Clean up any old database
-    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent_evolution.db")
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    test_runtime_dir = os.path.join(project_root, ".test-runtime")
+    os.makedirs(test_runtime_dir, exist_ok=True)
+
+    # Clean up any old test database
+    db_path = os.path.join(test_runtime_dir, "agent_evolution.e2e.db")
     if os.path.exists(db_path):
         os.remove(db_path)
 
-    # Clean up any old storage
-    storage_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "storage")
+    # Clean up any old test storage
+    storage_path = os.path.join(test_runtime_dir, "storage")
     import shutil
     if os.path.exists(storage_path):
         shutil.rmtree(storage_path)
 
+    server_env = os.environ.copy()
+    server_env["DATABASE_URL"] = f"sqlite:///{db_path}"
+    server_env["STORAGE_DIR"] = storage_path
+
     server = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "agentevo.main:app", "--port", "8765", "--log-level", "warning"],
-        cwd=os.path.dirname(os.path.abspath(__file__)),
+        cwd=project_root,
+        env=server_env,
     )
 
     try:
@@ -532,3 +583,5 @@ if __name__ == "__main__":
             os.remove(db_path)
         if os.path.exists(storage_path):
             shutil.rmtree(storage_path, ignore_errors=True)
+        if os.path.exists(test_runtime_dir) and not os.listdir(test_runtime_dir):
+            os.rmdir(test_runtime_dir)
