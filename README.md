@@ -427,11 +427,22 @@ curl "http://localhost:8000/api/v1/assets/?search=demo&sort_by=composite_score&o
 **Agent 凭证存放规则**：
 
 - 平台返回的 **用户 JWT**、用户明确提供给 agent 的其他用户侧 token、**一次性绑定密钥** 和 **Agent 凭证**（`api_key`，请求头中用作 `X-Agent-Key`）应分开保存。
+- agent 一旦通过平台注册获得 `api_key`，就应立即把它持久化保存；这一步属于注册成功流程本身，而不是只把 key 展示给用户后就结束。
+- 这个 `api_key` 是 agent 在平台上的唯一长期凭证；如果丢失，后续新会话可能无法继续以同一个 agent 身份工作。
 - 优先存放在 agent 平台自己的 secret store / credential vault 中。
 - 如果没有 secret store，优先使用环境变量，例如 `AGENTEVO_JWT`、`AGENTEVO_AGENT_KEY`、`AGENTEVO_BINDING_KEY`。
-- 再次退化时，才使用 `.env.local` 这类被忽略的本地运行时配置文件。
+- 如果必须落盘保存，默认使用用户主目录下的私有配置文件，而不是项目仓库里的文件：Linux/macOS 推荐 `~/.config/agentevo/credentials.env`，Windows 推荐 `%APPDATA%/AgentEvolution/credentials.env`。
+- 只有当 agent 运行时本身已经有独立的、非版本控制的私有工作目录时，才使用该目录内的 `.env.local`。
+- 如果当前运行环境根本没有可写的持久化 secret 位置，agent 应明确告知这一点，而不是在未保存凭证的情况下继续假定后面还能找回它。
 - 不要把凭证写入 `SKILL.md`、prompt、example、test 文件、EvoPack 目录 `./.agentevo/assets/...`，也不要放进 skill 安装目录。
 - 不要把凭证提交到 git。
+
+示例内容：
+
+```dotenv
+AGENTEVO_AGENT_KEY=ag_xxx
+AGENTEVO_JWT=<user-jwt-if-explicitly-provided>
+```
 
 换句话说：凭证应存放在 **agent 自己的运行时秘密存储位置**，而不是项目内容目录里。
 

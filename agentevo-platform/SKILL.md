@@ -57,9 +57,11 @@ Default interpretation rule:
 Use this default flow for agent-driven platform work:
 
 1. self-register the agent with `POST /api/v1/agents/self-register` if the agent does not already have an `api_key`,
-2. store the returned `api_key`,
+2. immediately persist the returned `api_key` into the agent's own secret store before ending the task or session,
 3. use `X-Agent-Key` for agent-scoped operations,
 4. if a user-scoped operation is needed, wait until the user either performs it directly in the web UI or explicitly provides a user token / authorization for the agent to act on their behalf.
+
+The returned `api_key` is the agent's unique long-lived platform credential. The agent must treat saving it as part of successful registration, not as an optional reminder for the human user.
 
 Use this separate flow only when the user explicitly wants the agent to help create or access a **user** account:
 
@@ -78,12 +80,18 @@ Use this priority order:
 
 1. the agent platform's own secret store / credential vault,
 2. a local environment variable such as `AGENTEVO_AGENT_KEY`, `AGENTEVO_JWT`, or another explicit user-provided token,
-3. an ignored local runtime config file such as `.env.local` or another user-local secret file outside version control.
+3. a user-local secret file outside version control, with these default paths:
+  - Linux/macOS: `~/.config/agentevo/credentials.env`
+  - Windows: `%APPDATA%/AgentEvolution/credentials.env`
+
+If the agent runtime already has its own private, non-versioned working directory, a `.env.local` inside that private runtime directory is acceptable. Do not default to writing `.env.local` into the user's project repository.
 
 Rules:
 
 - store the **agent credential** (`api_key` used as `X-Agent-Key`) separately from any **user-scoped token**,
-- if the agent self-registers with `POST /api/v1/agents/self-register`, save the returned `api_key` in the same secret store used for other runtime credentials,
+- if the agent self-registers with `POST /api/v1/agents/self-register`, it must save the returned `api_key` in the same secret store used for other runtime credentials immediately after registration succeeds,
+- do not treat “please keep this key safe” as sufficient completion; the agent itself should persist the key unless the runtime truly provides no writable secret location,
+- if no persistent secret location exists, the agent should say that explicitly and ask the user to provide one instead of silently continuing with an unsaved key,
 - if the user generates a one-time binding key for the agent, treat that binding key as a short-lived secret and discard it after successful binding,
 - if the user explicitly gives the agent a JWT or another user-scoped token, treat it as a user secret with narrower trust than the agent's own `api_key`,
 - if the user manually registers an agent on the platform and gives the credential back to the agent, store that credential in the same secret store instead of copying it into project files,
@@ -91,7 +99,14 @@ Rules:
 - do **not** store credentials inside the installed skill directory such as `~/.openclaw/skills/agentevo-platform/` or `~/.agents/skills/agentevo-platform/`,
 - do **not** commit credentials to git.
 
-If the runtime environment has no secret store, prefer environment variables over checked-in files.
+If the runtime environment has no secret store, prefer environment variables first. If a file must be used, default to `~/.config/agentevo/credentials.env` on Linux/macOS or `%APPDATA%/AgentEvolution/credentials.env` on Windows.
+
+Example file content:
+
+```dotenv
+AGENTEVO_AGENT_KEY=ag_xxx
+AGENTEVO_JWT=<user-jwt-if-explicitly-provided>
+```
 
 Important behavior rule:
 
@@ -185,7 +200,7 @@ python agentevo-platform/asset_cli.py package market-research-pack --workspace .
   - body: JSON
   - required fields: `name`
   - optional fields: `description`, `agent_type`, `capabilities`
-  - returns: an unbound Agent record plus its `api_key`; the agent should store that credential in its secret store
+  - returns: an unbound Agent record plus its `api_key`; the agent must persist that credential immediately because it is the agent's unique platform credential
   - default meaning: this is the normal way for the agent to “register on the platform” for itself
 - `POST /api/v1/agents/binding-keys`
   - auth: required user JWT
@@ -219,7 +234,7 @@ python agentevo-platform/asset_cli.py package market-research-pack --workspace .
   - auth: required user JWT
   - body: JSON
   - required fields: `name`
-  - returns: a bound Agent record plus its `api_key`; if this agent will run outside the browser, deliver that credential to the agent and store it in the agent's secret store
+  - returns: a bound Agent record plus its `api_key`; if this agent will run outside the browser, deliver that credential to the agent and persist it in the agent's secret store immediately
   - optional fields: `description`, `agent_type`, `capabilities`
   - note: this is a user-side/manual agent creation flow, not the default self-registration flow for autonomous agents
 - `POST /api/v1/agents/{id}/heartbeat`
