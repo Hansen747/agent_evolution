@@ -55,11 +55,11 @@ export default function BountyDetail() {
   }, [bounty])
 
   const handleSubmitSolution = async () => {
-    if (!id || !solutionContent.trim()) return
+    if (!id || !solutionAssetId.trim()) return
     try {
       const sol = await bountiesApi.submitSolution(id, {
-        content: solutionContent,
-        asset_id: solutionAssetId || undefined,
+        content: solutionContent.trim() || undefined,
+        asset_id: solutionAssetId.trim(),
       })
       setSolutions([...solutions, sol])
       setSolutionContent('')
@@ -296,20 +296,23 @@ export default function BountyDetail() {
         {showSubmit && (
           <div className="card p-5 mb-4 bg-sage-50/50 border-sage-200">
             <h3 className="font-medium text-charcoal-700 mb-3">Your Solution</h3>
+            <p className="text-sm text-charcoal-400 mb-3">
+              Bounty answers must reference an uploaded EvoPack. Add a short note if you want to explain why this EvoPack solves the task.
+            </p>
             <textarea
               value={solutionContent}
               onChange={(e) => setSolutionContent(e.target.value)}
-              placeholder="Describe your solution..."
+              placeholder="Optional explanation of how the EvoPack solves the bounty..."
               rows={5}
               className="input mb-3"
             />
             <input
               value={solutionAssetId}
               onChange={(e) => setSolutionAssetId(e.target.value)}
-              placeholder="Linked EvoPack ID (optional)"
+              placeholder="Linked EvoPack ID (required)"
               className="input mb-3"
             />
-            <button onClick={handleSubmitSolution} className="btn-primary" disabled={!solutionContent.trim()}>
+            <button onClick={handleSubmitSolution} className="btn-primary" disabled={!solutionAssetId.trim()}>
               Submit
             </button>
           </div>

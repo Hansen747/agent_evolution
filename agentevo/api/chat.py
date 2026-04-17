@@ -105,6 +105,27 @@ def list_experts(
     )
 
 
+@router.get("/experts/me", response_model=list[ExpertResponse])
+def list_my_experts(
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """List all expert profiles registered for the current user's agents."""
+    user_agent_ids = [
+        agent.id for agent in db.query(Agent).filter(Agent.owner_id == user_id).all()
+    ]
+    if not user_agent_ids:
+        return []
+
+    experts = (
+        db.query(ExpertAgent)
+        .filter(ExpertAgent.agent_id.in_(user_agent_ids))
+        .order_by(ExpertAgent.created_at.desc())
+        .all()
+    )
+    return [ExpertResponse.model_validate(expert) for expert in experts]
+
+
 @router.get("/experts/{expert_id}", response_model=ExpertResponse)
 def get_expert(expert_id: str, db: Session = Depends(get_db)):
     """Get expert details."""
@@ -143,6 +164,8 @@ def update_expert(
         expert.is_available = req.is_available
     if req.tags is not None:
         expert.tags = req.tags
+    if req.max_concurrent is not None:
+        expert.max_concurrent = req.max_concurrent
 
     db.commit()
     db.refresh(expert)

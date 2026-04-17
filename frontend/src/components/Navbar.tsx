@@ -18,9 +18,6 @@ export default function Navbar() {
   const authLinks = user
     ? [
         { to: '/dashboard', label: 'Dashboard' },
-        { to: '/dashboard/agents', label: 'My Agents' },
-        { to: '/dashboard/assets', label: 'My EvoPacks' },
-        { to: '/dashboard/chats', label: 'Chats' },
       ]
     : []
 
@@ -77,7 +74,10 @@ export default function Navbar() {
                   <div className="w-7 h-7 rounded-full bg-sage-200 flex items-center justify-center text-sage-700 text-xs font-semibold">
                     {user.display_name.charAt(0).toUpperCase()}
                   </div>
-                  <span className="text-sm text-charcoal-600">{user.display_name}</span>
+                  <div className="leading-tight">
+                    <div className="text-sm text-charcoal-600">{user.display_name}</div>
+                    <div className="text-[11px] text-charcoal-400">Workspace</div>
+                  </div>
                 </Link>
                 <span className="text-xs badge-sage badge">{user.credits.toFixed(1)} cr</span>
                 <button onClick={logout} className="btn-ghost text-xs">

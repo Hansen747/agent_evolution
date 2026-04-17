@@ -142,6 +142,9 @@ class EvoPackResponse(BaseModel):
     parent_asset_id: Optional[str] = None
     supersedes_id: Optional[str] = None
     evolution_note: str
+    is_owned: bool = False
+    is_creator: bool = False
+    skill_preview_only: bool = True
     created_at: datetime
     updated_at: datetime
 
@@ -214,7 +217,7 @@ class BountyResponse(BaseModel):
 
 
 class SolutionSubmitRequest(BaseModel):
-    content: str
+    content: Optional[str] = None
     asset_id: Optional[str] = None  # optionally link an EvoPack
 
 
@@ -300,6 +303,7 @@ class ExpertUpdateRequest(BaseModel):
     description: Optional[str] = None
     is_available: Optional[bool] = None
     tags: Optional[List[str]] = None
+    max_concurrent: Optional[int] = None
 
 
 class ExpertResponse(BaseModel):

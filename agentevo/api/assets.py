@@ -19,7 +19,13 @@ from sqlalchemy import or_
 
 from agentevo.core.config import settings
 from agentevo.core.database import get_db
-from agentevo.core.security import ActorContext, get_current_actor_context
+from agentevo.core.security import (
+    ActorContext,
+    get_current_actor_context,
+    get_optional_agent,
+    get_optional_user_id,
+)
+from agentevo.core.ownership import grant_asset_ownership, user_owns_asset
 from agentevo.core.scoring import compute_asset_score
 from agentevo.models.models import Agent, SubagentAsset, User, Trade, OperationLog
 from agentevo.api.schemas import (
@@ -101,6 +107,54 @@ def _read_file_from_archive(archive_path: str, filename: str) -> Optional[bytes]
     except Exception:
         pass
     return None
+
+
+def _extract_skill_header_preview(skill_md: str) -> str:
+    if not skill_md.strip():
+        return ""
+
+    lines = skill_md.splitlines()
+    preview: list[str] = []
+    index = 0
+
+    if lines and lines[0].strip() == "---":
+        preview.append(lines[0])
+        index = 1
+        while index < len(lines):
+            preview.append(lines[index])
+            if lines[index].strip() == "---":
+                index += 1
+                break
+            index += 1
+
+    collected_after_header = 0
+    seen_heading = any(line.lstrip().startswith("#") for line in preview)
+    while index < len(lines) and collected_after_header < 14:
+        line = lines[index]
+        if seen_heading and line.lstrip().startswith("##"):
+            break
+        if line.lstrip().startswith("#"):
+            seen_heading = True
+        preview.append(line)
+        collected_after_header += 1
+        index += 1
+
+    return "\n".join(preview).strip()
+
+
+def _serialize_asset(asset: SubagentAsset, owner_user_id: Optional[str], db: Session) -> dict:
+    data = EvoPackResponse.model_validate(asset).model_dump()
+    is_creator = owner_user_id is not None and asset.creator_id == owner_user_id
+    is_owned = user_owns_asset(db, owner_user_id, asset)
+    data["is_creator"] = is_creator
+    data["is_owned"] = is_owned
+    data["skill_preview_only"] = not is_owned
+
+    if not is_owned:
+        data["file_list"] = []
+        data["skill_md"] = _extract_skill_header_preview(asset.skill_md)
+
+    return data
 
 
 def _recompute_score(asset: SubagentAsset):
@@ -281,18 +335,41 @@ def my_assets(
     return db.query(SubagentAsset).filter(SubagentAsset.creator_id == user_id).all()
 
 
+@router.get("/me/owned", response_model=list[EvoPackBriefResponse])
+def my_owned_assets(
+    actor: ActorContext = Depends(get_current_actor_context),
+    db: Session = Depends(get_db),
+):
+    """List EvoPacks owned by the current user but created by someone else."""
+    user_id = actor.user_id
+    return (
+        db.query(SubagentAsset)
+        .join(Trade, Trade.asset_id == SubagentAsset.id)
+        .filter(Trade.buyer_id == user_id, SubagentAsset.creator_id != user_id)
+        .distinct()
+        .all()
+    )
+
+
 @router.get("/{asset_id}", response_model=EvoPackResponse)
-def get_asset(asset_id: str, db: Session = Depends(get_db)):
+def get_asset(
+    asset_id: str,
+    user_id: Optional[str] = Depends(get_optional_user_id),
+    agent: Optional[Agent] = Depends(get_optional_agent),
+    db: Session = Depends(get_db),
+):
     """
     Get full metadata of an EvoPack (public).
 
-    Includes SKILL.md content and file list for preview.
-    Source code is NOT included — use the download endpoint to get the zip.
+    Public callers only receive SKILL.md header metadata.
+    Owners receive the full SKILL.md content and archive file list.
     """
     asset = db.query(SubagentAsset).filter(SubagentAsset.id == asset_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="EvoPack not found")
-    return asset
+
+    owner_user_id = user_id or (agent.owner_id if agent and agent.owner_id else None)
+    return _serialize_asset(asset, owner_user_id, db)
 
 
 @router.get("/{asset_id}/files/{filename:path}")
@@ -312,16 +389,8 @@ def get_asset_file(
     if not asset:
         raise HTTPException(status_code=404, detail="EvoPack not found")
 
-    # Authorization: creator or purchaser
-    is_creator = asset.creator_id == user_id
-    has_purchased = db.query(Trade).filter(
-        Trade.asset_id == asset_id, Trade.buyer_id == user_id
-    ).first() is not None
-    # Also allow if asset is free and user has downloaded (usage_count > 0 isn't per-user, so just allow free assets)
-    is_free = asset.price <= 0
-
-    if not (is_creator or has_purchased or is_free):
-        raise HTTPException(status_code=403, detail="Purchase this EvoPack to view its files")
+    if not user_owns_asset(db, user_id, asset):
+        raise HTTPException(status_code=403, detail="Acquire this EvoPack before viewing its files")
 
     if not asset.archive_path or not os.path.exists(asset.archive_path):
         raise HTTPException(status_code=404, detail="Archive not found on disk")
@@ -465,15 +534,18 @@ def download_asset(
         raise HTTPException(status_code=404, detail="EvoPack not found")
 
     is_creator = asset.creator_id == user_id
-    has_purchased = db.query(Trade).filter(
-        Trade.asset_id == asset_id, Trade.buyer_id == user_id
-    ).first() is not None
+    is_owned = user_owns_asset(db, user_id, asset)
 
-    if asset.price > 0 and not is_creator and not has_purchased:
+    if asset.price > 0 and not is_owned:
         raise HTTPException(
             status_code=400,
             detail="This EvoPack has a price. Use /trades/purchase first.",
         )
+
+    newly_owned = False
+    if asset.price <= 0 and not is_owned:
+        granted = grant_asset_ownership(db, asset, user_id, status="free_grant")
+        newly_owned = granted is not None
 
     if not asset.archive_path or not os.path.exists(asset.archive_path):
         raise HTTPException(status_code=404, detail="Archive not found on disk")
@@ -483,6 +555,8 @@ def download_asset(
         asset.download_count += 1
         asset.usage_count += 1
         _recompute_score(asset)
+        db.commit()
+    elif newly_owned:
         db.commit()
 
     return FileResponse(

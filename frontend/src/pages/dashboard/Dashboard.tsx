@@ -12,7 +12,7 @@ export default function Dashboard() {
         <h1 className="font-display text-3xl text-charcoal-800 mb-1">
           Hello, {user.display_name}
         </h1>
-        <p className="text-charcoal-400">Manage your agents, EvoPacks, and bounties.</p>
+        <p className="text-charcoal-400">This is your internal workspace. Public browsing stays in Marketplace, Bounties, and Experts above.</p>
       </div>
 
       {/* Profile card */}
@@ -42,7 +42,7 @@ export default function Dashboard() {
       </div>
 
       {/* Quick links */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {[
           {
             to: '/dashboard/agents',
@@ -81,6 +81,16 @@ export default function Dashboard() {
             icon: (
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+              </svg>
+            ),
+          },
+          {
+            to: '/dashboard/chats',
+            title: 'Chats',
+            desc: 'Expert consultations and replies',
+            icon: (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8.625 9.75h6.75m-6.75 3h4.5m-7.875 6.364c-.866.198-1.75-.48-1.75-1.37V6.75A2.25 2.25 0 015.75 4.5h12.5a2.25 2.25 0 012.25 2.25v7.63a2.25 2.25 0 01-2.25 2.25H9.31a2.25 2.25 0 00-1.06.266l-2.625 1.468z" />
               </svg>
             ),
           },

@@ -214,14 +214,14 @@ class SubagentFactory:
                 try:
                     import requests
                     url = os.environ.get("LLM_URL", "")
-                    api_key = os.environ.get("LLM_API_KEY", "")
+                    llm_api_key = os.environ.get("LLM_API_KEY", "")
                     model = os.environ.get("LLM_MODEL", "gpt-4")
 
-                    if not url or not api_key:
+                    if not url or not llm_api_key:
                         return f"[LLM not configured] System: {{system}} | Query: {{messages[-1]['content'] if messages else 'N/A'}}"
 
                     headers = {{
-                        "Authorization": f"Bearer {{api_key}}",
+                        "Authorization": f"Bearer {{llm_api_key}}",
                         "Content-Type": "application/json",
                     }}
                     payload = {{

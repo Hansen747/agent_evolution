@@ -284,6 +284,27 @@ def test_full_workflow():
     assert "SKILL.md" in paid_asset["file_list"]
     print(f"    Paid EvoPack published: premium_prompt_pack (id={paid_asset_id}, price=10.0)")
 
+    solver_zip = make_zip({
+        "solver.py": SUBAGENT_CODE,
+        "SKILL.md": "# bounty_solver\nReusable EvoPack built by Bob for solving research bounties.",
+    })
+    r = requests.post(
+        f"{API}/assets/",
+        files={"file": ("bounty_solver.zip", solver_zip, "application/zip")},
+        data={
+            "name": "bounty_solver",
+            "description": "Bob's EvoPack submitted as a bounty answer",
+            "tags": json.dumps(["solver", "bounty"]),
+            "entry_file": "solver.py",
+            "price": "0.0",
+        },
+        headers={"X-Agent-Key": bob_bound_key},
+    )
+    assert r.status_code == 201, f"Publish Bob solver EvoPack failed: {r.text}"
+    bob_solution_asset = r.json()
+    bob_solution_asset_id = bob_solution_asset["id"]
+    print(f"    Bob solver EvoPack published: {bob_solution_asset_id}")
+
     # ---- 9. Search EvoPacks ----
     print("\n[9] Search EvoPacks...")
     r = requests.get(f"{API}/assets/", params={"search": "research"})
@@ -302,6 +323,8 @@ def test_full_workflow():
     assert r.status_code == 200
     detail = r.json()
     print(f"    EvoPack detail: {detail['name']}, file_list={detail['file_list']}, skill_md_len={len(detail['skill_md'])}")
+    assert detail["file_list"] == []
+    assert detail["skill_preview_only"] is True
 
     # ---- 11. Download free EvoPack (Bob) ----
     print("\n[11] Download free EvoPack...")
@@ -312,6 +335,16 @@ def test_full_workflow():
     zf = zipfile.ZipFile(io.BytesIO(r.content))
     assert "web_researcher.py" in zf.namelist()
     print(f"    Bob downloaded zip: {len(r.content)} bytes, files={zf.namelist()}")
+    r = requests.get(f"{API}/assets/me/owned", headers={"X-Agent-Key": bob_bound_key})
+    assert r.status_code == 200
+    owned_ids = {item["id"] for item in r.json()}
+    assert free_asset_id in owned_ids
+    print("    Free EvoPack download added asset to Bob's owned library")
+    r = requests.get(f"{API}/assets/{free_asset_id}", headers={"X-Agent-Key": bob_bound_key})
+    assert r.status_code == 200
+    owned_detail = r.json()
+    assert "web_researcher.py" in owned_detail["file_list"]
+    assert owned_detail["skill_preview_only"] is False
 
     # ---- 12. Rate EvoPack ----
     print("\n[12] Rate EvoPack...")
@@ -381,8 +414,7 @@ def test_full_workflow():
     # ---- 14. Submit solution (Bob) ----
     print("\n[14] Submit solution...")
     r = requests.post(f"{API}/bounties/{bounty_id}/solutions", json={
-        "content": "I built a news scraper subagent that handles 5 major news sites including paywall detection via headless browser.",
-        "asset_id": None,
+        "asset_id": bob_solution_asset_id,
     }, headers={"X-Agent-Key": bob_bound_key})
     assert r.status_code == 201, f"Submit solution failed: {r.text}"
     solution = r.json()
@@ -401,6 +433,11 @@ def test_full_workflow():
     r = requests.post(f"{API}/bounties/{bounty_id}/solutions/{solution_id}/accept", headers={"X-Agent-Key": self_bound_key})
     assert r.status_code == 200, f"Accept failed: {r.text}"
     print(f"    Solution accepted: {r.json()['message']}")
+    r = requests.get(f"{API}/assets/me/owned", headers={"X-Agent-Key": self_bound_key})
+    assert r.status_code == 200
+    alice_owned_ids = {item["id"] for item in r.json()}
+    assert bob_solution_asset_id in alice_owned_ids
+    print("    Accepted EvoPack solution added asset to Alice's owned library")
 
     # Check Bob's credits increased (reward)
     r = requests.get(f"{API}/auth/me", headers=bob_h)

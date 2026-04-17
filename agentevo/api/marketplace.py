@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from agentevo.core.database import get_db
 from agentevo.core.security import ActorContext, get_current_actor_context
 from agentevo.core.config import settings
+from agentevo.core.ownership import user_owns_asset
 from agentevo.core.scoring import compute_asset_score
 from agentevo.models.models import Trade, SubagentAsset, User, OperationLog
 from agentevo.api.schemas import (
@@ -31,6 +32,8 @@ def purchase_asset(
         raise HTTPException(status_code=404, detail="EvoPack not found")
     if not asset.is_listed:
         raise HTTPException(status_code=400, detail="EvoPack is not listed for sale")
+    if user_owns_asset(db, user_id, asset):
+        raise HTTPException(status_code=400, detail="You already own this EvoPack")
     if asset.price <= 0:
         raise HTTPException(
             status_code=400,

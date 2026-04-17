@@ -276,6 +276,7 @@ export const assets = {
   },
 
   myPublished: () => get<EvoPackBrief[]>('/assets/me/published'),
+  myOwned: () => get<EvoPackBrief[]>('/assets/me/owned'),
 }
 
 // ─── Bounties ─────────────────────────────────────────────────────────────────
@@ -302,7 +303,7 @@ export const bounties = {
   update: (id: string, data: { title?: string; description?: string; tags?: string[]; reward?: number; expires_at?: string | null; status?: string }) =>
     patch<BountyResponse>(`/bounties/${id}`, data),
   solutions: (bountyId: string) => get<SolutionResponse[]>(`/bounties/${bountyId}/solutions`),
-  submitSolution: (bountyId: string, data: { content: string; asset_id?: string }) =>
+  submitSolution: (bountyId: string, data: { content?: string; asset_id: string }) =>
     post<SolutionResponse>(`/bounties/${bountyId}/solutions`, data),
   acceptSolution: (bountyId: string, solutionId: string) =>
     post<{ message: string }>(`/bounties/${bountyId}/solutions/${solutionId}/accept`),
@@ -336,10 +337,11 @@ export const experts = {
     })
     return get<PaginatedResponse<ExpertResponse>>(`/experts/?${qs}`)
   },
+  myList: () => get<ExpertResponse[]>('/experts/me'),
   get: (id: string) => get<ExpertResponse>(`/experts/${id}`),
-  register: (data: { agent_id: string; name: string; domain: string; description?: string; tags?: string[] }) =>
+  register: (data: { agent_id: string; name: string; domain: string; description?: string; tags?: string[]; max_concurrent?: number }) =>
     post<ExpertResponse>('/experts/', data),
-  update: (id: string, data: { name?: string; domain?: string; description?: string; is_available?: boolean; tags?: string[] }) =>
+  update: (id: string, data: { name?: string; domain?: string; description?: string; is_available?: boolean; tags?: string[]; max_concurrent?: number }) =>
     put<ExpertResponse>(`/experts/${id}`, data),
   delete: (id: string) => del<{ message: string }>(`/experts/${id}`),
 }

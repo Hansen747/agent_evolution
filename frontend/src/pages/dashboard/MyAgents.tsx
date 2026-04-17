@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { agents as agentsApi } from '../../api/client'
-import type { AgentBindingKeyCreateResponse, AgentBindingKeyResponse, AgentResponse } from '../../types'
+import { Link } from 'react-router-dom'
+import { agents as agentsApi, experts as expertsApi } from '../../api/client'
+import type { AgentBindingKeyCreateResponse, AgentBindingKeyResponse, AgentResponse, ExpertResponse } from '../../types'
 import { PageLoader, EmptyState, ErrorMessage } from '../../components/Ui'
 
 const ASSOCIATION_LABELS: Record<string, { label: string; tone: string; description: string }> = {
@@ -43,9 +44,34 @@ async function copyToClipboard(value: string) {
   await navigator.clipboard.writeText(value)
 }
 
+function parseTagInput(value: string) {
+  return value.split(',').map((item) => item.trim()).filter(Boolean)
+}
+
+type ExpertFormState = {
+  name: string
+  domain: string
+  description: string
+  tags: string
+  is_available: boolean
+  max_concurrent: number
+}
+
+function makeExpertForm(agent: AgentResponse, expert?: ExpertResponse | null): ExpertFormState {
+  return {
+    name: expert?.name || agent.name,
+    domain: expert?.domain || '',
+    description: expert?.description || agent.description || '',
+    tags: expert?.tags.join(', ') || '',
+    is_available: expert?.is_available ?? true,
+    max_concurrent: expert?.max_concurrent || 10,
+  }
+}
+
 export default function MyAgents() {
   const [agentsList, setAgentsList] = useState<AgentResponse[]>([])
   const [bindingKeys, setBindingKeys] = useState<AgentBindingKeyResponse[]>([])
+  const [expertProfiles, setExpertProfiles] = useState<ExpertResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [setupOpen, setSetupOpen] = useState(false)
@@ -59,17 +85,22 @@ export default function MyAgents() {
   const [capabilities, setCapabilities] = useState('')
   const [formMsg, setFormMsg] = useState('')
   const [newBindingKey, setNewBindingKey] = useState<AgentBindingKeyCreateResponse | null>(null)
+  const [expertEditorAgentId, setExpertEditorAgentId] = useState<string | null>(null)
+  const [expertForm, setExpertForm] = useState<ExpertFormState | null>(null)
+  const [expertSaving, setExpertSaving] = useState(false)
 
   const fetchData = async () => {
     setLoading(true)
     setError('')
     try {
-      const [list, keyList] = await Promise.all([
+      const [list, keyList, myExperts] = await Promise.all([
         agentsApi.list(),
         agentsApi.listBindingKeys(),
+        expertsApi.myList(),
       ])
       setAgentsList(list)
       setBindingKeys(keyList)
+      setExpertProfiles(myExperts)
       if (!setupInitialized) {
         setSetupOpen(list.length === 0)
         setSetupInitialized(true)
@@ -161,8 +192,80 @@ export default function MyAgents() {
     }
   }
 
+  const expertByAgentId = new Map(expertProfiles.map((expert) => [expert.agent_id, expert]))
+
+  const openExpertEditor = (agent: AgentResponse) => {
+    const expert = expertByAgentId.get(agent.id)
+    setExpertEditorAgentId(agent.id)
+    setExpertForm(makeExpertForm(agent, expert))
+    setFormMsg('')
+  }
+
+  const closeExpertEditor = () => {
+    setExpertEditorAgentId(null)
+    setExpertForm(null)
+  }
+
+  const handleSaveExpert = async (agent: AgentResponse) => {
+    if (!expertForm) return
+
+    setExpertSaving(true)
+    setFormMsg('')
+    try {
+      const existing = expertByAgentId.get(agent.id)
+      const payload = {
+        name: expertForm.name.trim(),
+        domain: expertForm.domain.trim(),
+        description: expertForm.description.trim(),
+        tags: parseTagInput(expertForm.tags),
+        is_available: expertForm.is_available,
+        max_concurrent: expertForm.max_concurrent,
+      }
+
+      if (existing) {
+        await expertsApi.update(existing.id, payload)
+        setFormMsg('Expert profile updated.')
+      } else {
+        await expertsApi.register({
+          agent_id: agent.id,
+          name: payload.name,
+          domain: payload.domain,
+          description: payload.description,
+          tags: payload.tags,
+          max_concurrent: payload.max_concurrent,
+        })
+        setFormMsg('Agent registered as an expert.')
+      }
+
+      closeExpertEditor()
+      fetchData()
+    } catch (e: unknown) {
+      setFormMsg(e instanceof Error ? e.message : 'Failed to save expert profile')
+    } finally {
+      setExpertSaving(false)
+    }
+  }
+
+  const handleDeleteExpert = async (agentId: string) => {
+    const expert = expertByAgentId.get(agentId)
+    if (!expert) return
+    if (!confirm('Unregister this expert profile? The agent will disappear from the Expert Agents directory.')) return
+
+    try {
+      await expertsApi.delete(expert.id)
+      if (expertEditorAgentId === agentId) {
+        closeExpertEditor()
+      }
+      setFormMsg('Expert profile removed.')
+      fetchData()
+    } catch (e: unknown) {
+      setFormMsg(e instanceof Error ? e.message : 'Failed to remove expert profile')
+    }
+  }
+
   const activeAgents = agentsList.filter((agent) => agent.status === 'active').length
   const readyBindingKeys = bindingKeys.filter((bindingKey) => !bindingKey.used_at && !bindingKey.revoked_at).length
+  const registeredExperts = expertProfiles.length
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 animate-fade-in">
@@ -178,7 +281,7 @@ export default function MyAgents() {
 
       {formMsg && <p className="text-sm text-sage-600 mb-4">{formMsg}</p>}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
         <div className="card p-5 bg-cream-100/70">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-charcoal-400 mb-2">Overview</p>
           <p className="font-display text-3xl text-charcoal-800">{agentsList.length}</p>
@@ -193,6 +296,11 @@ export default function MyAgents() {
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700 mb-2">Ready Binding Keys</p>
           <p className="font-display text-3xl text-charcoal-800">{readyBindingKeys}</p>
           <p className="text-sm text-charcoal-400">Unused one-time keys available for self-binding agents.</p>
+        </div>
+        <div className="card p-5 bg-amber-50/70 border-amber-200">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700 mb-2">Expert Profiles</p>
+          <p className="font-display text-3xl text-charcoal-800">{registeredExperts}</p>
+          <p className="text-sm text-charcoal-400">Agents currently registered in the public Expert Agents directory.</p>
         </div>
       </div>
 
@@ -216,6 +324,12 @@ export default function MyAgents() {
           <div className="space-y-4">
             {agentsList.map((agent) => (
               <div key={agent.id} className="card p-5">
+                {(() => {
+                  const expert = expertByAgentId.get(agent.id)
+                  const isEditing = expertEditorAgentId === agent.id && expertForm
+
+                  return (
+                    <>
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <div className="flex flex-wrap items-center gap-2 mb-1">
@@ -226,6 +340,9 @@ export default function MyAgents() {
                       <span className="badge badge-charcoal">{agent.agent_type}</span>
                       <span className={`badge ${ASSOCIATION_LABELS[agent.association_type]?.tone || 'bg-charcoal-100 text-charcoal-500'}`}>
                         {ASSOCIATION_LABELS[agent.association_type]?.label || agent.association_type}
+                      </span>
+                      <span className={`badge ${expert ? (expert.is_available ? 'bg-amber-100 text-amber-700' : 'bg-charcoal-100 text-charcoal-500') : 'bg-cream-200 text-charcoal-500'}`}>
+                        {expert ? (expert.is_available ? 'Expert Listed' : 'Expert Paused') : 'Not Expert'}
                       </span>
                     </div>
                     <p className="text-sm text-charcoal-400 mb-2">{agent.description || 'No description'}</p>
@@ -244,14 +361,150 @@ export default function MyAgents() {
                       {agent.bound_at && <span>Bound: {new Date(agent.bound_at).toLocaleString()}</span>}
                       {agent.last_heartbeat && <span>Last heartbeat: {new Date(agent.last_heartbeat).toLocaleString()}</span>}
                     </div>
+
+                    <div className="mt-4 rounded-2xl border border-cream-200 bg-cream-50/70 p-4">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-charcoal-400 mb-2">Expert Profile</p>
+                          {expert ? (
+                            <>
+                              <div className="flex flex-wrap items-center gap-2 mb-2">
+                                <span className="font-medium text-charcoal-700">{expert.name}</span>
+                                <span className="badge badge-sage">{expert.domain}</span>
+                                <span className={`badge ${expert.is_available ? 'bg-green-100 text-green-700' : 'bg-charcoal-100 text-charcoal-500'}`}>
+                                  {expert.is_available ? 'Available For Consultation' : 'Hidden From Directory'}
+                                </span>
+                              </div>
+                              <p className="text-sm text-charcoal-400 mb-2">{expert.description || 'No expert description yet.'}</p>
+                              <div className="text-xs text-charcoal-300 space-x-3 mb-2">
+                                <span>Max concurrent: {expert.max_concurrent}</span>
+                                <span>Updated: {new Date(expert.updated_at).toLocaleString()}</span>
+                              </div>
+                              {expert.tags.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {expert.tags.map((tag) => (
+                                    <span key={tag} className="badge badge-charcoal">{tag}</span>
+                                  ))}
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <p className="text-sm text-charcoal-400">This agent is not in the Expert Agents directory yet.</p>
+                          )}
+                        </div>
+                        {expert && (
+                          <Link to={`/experts/${expert.id}`} className="btn-ghost text-xs self-start">
+                            View Public Profile
+                          </Link>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <button onClick={() => handleDelete(agent.id)} className="btn-danger text-xs">Delete</button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button onClick={() => openExpertEditor(agent)} className="btn-secondary text-xs">
+                      {expert ? 'Edit Expert Profile' : 'Register As Expert'}
+                    </button>
+                    {expert && (
+                      <button onClick={() => handleDeleteExpert(agent.id)} className="btn-ghost text-xs">
+                        Unregister Expert
+                      </button>
+                    )}
+                    <button onClick={() => handleDelete(agent.id)} className="btn-danger text-xs">Delete</button>
+                  </div>
                 </div>
+
+                {isEditing && (
+                  <div className="mt-5 border-t border-cream-200 pt-5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <label className="block text-sm font-medium text-charcoal-600 mb-1">Expert Name</label>
+                        <input
+                          value={expertForm.name}
+                          onChange={(e) => setExpertForm({ ...expertForm, name: e.target.value })}
+                          className="input"
+                          maxLength={128}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-charcoal-600 mb-1">Domain</label>
+                        <input
+                          value={expertForm.domain}
+                          onChange={(e) => setExpertForm({ ...expertForm, domain: e.target.value })}
+                          className="input"
+                          maxLength={128}
+                          placeholder="data_analysis"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-charcoal-600 mb-1">Expert Description</label>
+                      <textarea
+                        value={expertForm.description}
+                        onChange={(e) => setExpertForm({ ...expertForm, description: e.target.value })}
+                        className="input"
+                        rows={3}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <label className="block text-sm font-medium text-charcoal-600 mb-1">Tags</label>
+                        <input
+                          value={expertForm.tags}
+                          onChange={(e) => setExpertForm({ ...expertForm, tags: e.target.value })}
+                          className="input"
+                          placeholder="research, python, scraping"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-charcoal-600 mb-1">Max Concurrent Sessions</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={100}
+                          value={expertForm.max_concurrent}
+                          onChange={(e) => setExpertForm({ ...expertForm, max_concurrent: Number(e.target.value) || 1 })}
+                          className="input"
+                        />
+                      </div>
+                    </div>
+
+                    <label className="inline-flex items-center gap-2 text-sm text-charcoal-600 mb-4">
+                      <input
+                        type="checkbox"
+                        checked={expertForm.is_available}
+                        onChange={(e) => setExpertForm({ ...expertForm, is_available: e.target.checked })}
+                      />
+                      Show this expert in the public Expert Agents directory
+                    </label>
+
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleSaveExpert(agent)}
+                        disabled={expertSaving}
+                        className="btn-primary"
+                      >
+                        {expertSaving ? 'Saving...' : (expert ? 'Save Expert Profile' : 'Register Expert')}
+                      </button>
+                      <button type="button" onClick={closeExpertEditor} className="btn-secondary">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="mt-3 pt-3 border-t border-cream-200">
                   <p className="text-xs text-charcoal-400">
                     API Key: <code className="text-xs font-mono bg-cream-200 px-1.5 py-0.5 rounded">{agent.api_key}</code>
                   </p>
                 </div>
+                    </>
+                  )
+                })()}
               </div>
             ))}
           </div>

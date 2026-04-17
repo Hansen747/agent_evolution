@@ -78,6 +78,9 @@ export interface EvoPackFull extends EvoPackBrief {
   parent_asset_id: string | null
   supersedes_id: string | null
   evolution_note: string
+  is_owned: boolean
+  is_creator: boolean
+  skill_preview_only: boolean
   updated_at: string
 }
 

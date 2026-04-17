@@ -15,14 +15,14 @@ def call_llm(system: str, messages: list, max_tokens: int = 4000) -> str:
     try:
         import requests
         url = os.environ.get("LLM_URL", "")
-        api_key = os.environ.get("LLM_API_KEY", "")
+        llm_api_key = os.environ.get("LLM_API_KEY", "")
         model = os.environ.get("LLM_MODEL", "gpt-4")
 
-        if not url or not api_key:
+        if not url or not llm_api_key:
             return f"[LLM not configured] System: {system}"
 
         headers = {
-            "Authorization": f"Bearer {api_key}",
+            "Authorization": f"Bearer {llm_api_key}",
             "Content-Type": "application/json",
         }
         payload = {

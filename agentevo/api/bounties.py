@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
 from agentevo.core.database import get_db
+from agentevo.core.ownership import grant_asset_ownership
 from agentevo.core.security import ActorContext, get_current_actor_context
 from agentevo.core.scoring import compute_asset_score
 from agentevo.models.models import Bounty, BountySolution, SubagentAsset, User
@@ -188,11 +189,26 @@ def submit_solution(
     if bounty.poster_id == user_id:
         raise HTTPException(status_code=400, detail="Cannot solve your own bounty")
 
+    if not req.asset_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Bounty solutions must reference an EvoPack via asset_id",
+        )
+
+    normalized_content = (req.content or "").strip()
+
+    asset = db.query(SubagentAsset).filter(SubagentAsset.id == req.asset_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Linked EvoPack not found")
+
+    if not normalized_content:
+        normalized_content = f"Submitted linked EvoPack {req.asset_id} as the solution."
+
     solution = BountySolution(
         bounty_id=bounty_id,
         solver_id=user_id,
         asset_id=req.asset_id,
-        content=req.content,
+        content=normalized_content,
     )
     db.add(solution)
 
@@ -256,6 +272,7 @@ def accept_solution(
         asset = db.query(SubagentAsset).filter(SubagentAsset.id == solution.asset_id).first()
         if asset:
             asset.solve_count += 1
+            grant_asset_ownership(db, asset, user_id, status="accepted_solution")
             asset.composite_score = compute_asset_score(
                 quality_score=asset.quality_score,
                 usage_count=asset.usage_count,

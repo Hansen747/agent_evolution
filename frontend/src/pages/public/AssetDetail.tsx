@@ -98,7 +98,8 @@ export default function AssetDetail() {
   if (error) return <div className="max-w-4xl mx-auto px-4 py-10"><ErrorMessage message={error} /></div>
   if (!asset) return null
 
-  const isCreator = user?.id === asset.creator_id
+  const isCreator = asset.is_creator || user?.id === asset.creator_id
+  const isOwned = asset.is_owned || isCreator
   const isFree = asset.price === 0
 
   return (
@@ -182,15 +183,25 @@ export default function AssetDetail() {
       {/* SKILL.md preview */}
       {asset.skill_md && (
         <div className="mb-8">
-          <h2 className="font-display text-xl text-charcoal-700 mb-3">SKILL.md</h2>
+          <div className="flex items-center justify-between mb-3 gap-4">
+            <h2 className="font-display text-xl text-charcoal-700">SKILL.md</h2>
+            {asset.skill_preview_only && (
+              <span className="badge badge-charcoal">Header Preview Only</span>
+            )}
+          </div>
           <div className="bg-cream-100 rounded-xl p-5 text-sm text-charcoal-600 font-mono whitespace-pre-wrap border border-cream-300 max-h-96 overflow-y-auto">
             {asset.skill_md}
           </div>
+          {asset.skill_preview_only && (
+            <p className="text-xs text-charcoal-400 mt-2">
+              Only owners can inspect the full EvoPack contents. Public views only expose the SKILL header metadata.
+            </p>
+          )}
         </div>
       )}
 
       {/* File list */}
-      {asset.file_list && asset.file_list.length > 0 && (
+      {isOwned && asset.file_list && asset.file_list.length > 0 && (
         <div className="mb-8">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-display text-xl text-charcoal-700">Archive Contents</h2>
@@ -235,11 +246,7 @@ export default function AssetDetail() {
               ))}
             </div>
           </div>
-          <p className="text-xs text-charcoal-300 mt-2">
-            {isCreator || isFree
-              ? 'Click a file to preview its contents.'
-              : 'File preview available after EvoPack purchase.'}
-          </p>
+          <p className="text-xs text-charcoal-300 mt-2">Click a file to preview its contents.</p>
         </div>
       )}
 
@@ -290,18 +297,21 @@ export default function AssetDetail() {
         <div className="card p-5">
           <div className="flex flex-wrap items-center gap-4">
             {/* Download / Purchase buttons */}
-            {isCreator || isFree ? (
+            {isOwned ? (
               <button onClick={handleDownload} disabled={downloading} className="btn-primary">
-                {downloading ? 'Downloading...' : `Download${isFree ? ' (Free)' : ''}`}
+                {downloading ? 'Downloading...' : 'Download EvoPack'}
               </button>
             ) : (
               <>
-                <button onClick={handlePurchase} disabled={purchasing} className="btn-primary">
-                  {purchasing ? 'Processing...' : `Purchase for ${asset.price} cr`}
-                </button>
-                <button onClick={handleDownload} disabled={downloading} className="btn-ghost text-sm">
-                  {downloading ? 'Downloading...' : 'Download (if purchased)'}
-                </button>
+                {isFree ? (
+                  <button onClick={handleDownload} disabled={downloading} className="btn-primary">
+                    {downloading ? 'Adding...' : 'Add To My EvoPacks'}
+                  </button>
+                ) : (
+                  <button onClick={handlePurchase} disabled={purchasing} className="btn-primary">
+                    {purchasing ? 'Processing...' : `Purchase for ${asset.price} cr`}
+                  </button>
+                )}
               </>
             )}
 

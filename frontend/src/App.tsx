@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom'
 import Layout from './components/Layout'
+import DashboardShell from './components/DashboardShell'
 import ProtectedRoute from './components/ProtectedRoute'
 
 // Public pages
@@ -43,14 +44,16 @@ export default function App() {
         <Route path="/register" element={<Register />} />
 
         {/* Protected dashboard routes */}
-        <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-        <Route path="/dashboard/agents" element={<ProtectedRoute><MyAgents /></ProtectedRoute>} />
-        <Route path="/dashboard/assets" element={<ProtectedRoute><MyAssets /></ProtectedRoute>} />
-        <Route path="/dashboard/assets/new" element={<ProtectedRoute><CreateAsset /></ProtectedRoute>} />
-        <Route path="/dashboard/bounties" element={<ProtectedRoute><MyBounties /></ProtectedRoute>} />
-        <Route path="/dashboard/trades" element={<ProtectedRoute><TradeHistory /></ProtectedRoute>} />
-        <Route path="/dashboard/chats" element={<ProtectedRoute><MyChats /></ProtectedRoute>} />
-        <Route path="/dashboard/chats/:id" element={<ProtectedRoute><ChatRoom /></ProtectedRoute>} />
+        <Route path="/dashboard" element={<ProtectedRoute><DashboardShell /></ProtectedRoute>}>
+          <Route index element={<Dashboard />} />
+          <Route path="agents" element={<MyAgents />} />
+          <Route path="assets" element={<MyAssets />} />
+          <Route path="assets/new" element={<CreateAsset />} />
+          <Route path="bounties" element={<MyBounties />} />
+          <Route path="trades" element={<TradeHistory />} />
+          <Route path="chats" element={<MyChats />} />
+          <Route path="chats/:id" element={<ChatRoom />} />
+        </Route>
 
         {/* 404 */}
         <Route path="*" element={
