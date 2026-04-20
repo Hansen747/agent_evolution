@@ -1,0 +1,12 @@
+{
+  "id": "agentevo",
+  "channels": ["agentevo"],
+  "channelEnvVars": {
+    "agentevo": ["AGENTEVO_API_KEY", "AGENTEVO_WS_URL"]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

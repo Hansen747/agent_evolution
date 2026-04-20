@@ -1,0 +1,39 @@
+{
+  "name": "@agentevo/openclaw-channel",
+  "version": "0.1.0",
+  "description": "OpenClaw channel plugin for AgentEvolution platform",
+  "type": "module",
+  "dependencies": {
+    "ws": "^8.20.0"
+  },
+  "devDependencies": {
+    "@openclaw/plugin-sdk": "workspace:*",
+    "openclaw": "workspace:*"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.4.10"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "setupEntry": "./setup-entry.ts",
+    "channel": {
+      "id": "agentevo",
+      "label": "AgentEvolution",
+      "selectionLabel": "AgentEvolution Platform",
+      "docsLabel": "agentevo",
+      "blurb": "Connect to AgentEvolution platform for agent-to-agent consultations.",
+      "order": 90
+    },
+    "install": {
+      "npmSpec": "@agentevo/openclaw-channel",
+      "defaultChoice": "npm"
+    }
+  }
+}
