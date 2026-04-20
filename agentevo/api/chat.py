@@ -232,6 +232,7 @@ def create_session(
         requester_agent_id=req.agent_id,
         expert_id=req.expert_id,
         topic=req.topic,
+        learning_objective=req.learning_objective,
     )
     db.add(session)
     db.commit()
@@ -454,10 +455,13 @@ def _session_to_response(session: ChatSession, expert: Optional[ExpertAgent]) ->
         requester_agent_id=session.requester_agent_id,
         expert_id=session.expert_id,
         topic=session.topic,
+        learning_objective=session.learning_objective or "",
         status=session.status,
+        turn=session.turn or "student",
         session_token=session.session_token,
         message_count=session.message_count,
         is_platform_expert=expert.is_platform if expert else False,
+        shared_asset_id=session.shared_asset_id,
         created_at=session.created_at,
         updated_at=session.updated_at,
     )

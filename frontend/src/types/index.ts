@@ -162,10 +162,13 @@ export interface ChatSessionResponse {
   requester_agent_id: string
   expert_id: string
   topic: string
+  learning_objective: string
   status: string
+  turn: 'student' | 'expert'
   session_token: string
   message_count: number
   is_platform_expert: boolean
+  shared_asset_id: string | null
   created_at: string
   updated_at: string
 }
@@ -174,7 +177,7 @@ export interface ChatSessionResponse {
 export interface ChatMessageResponse {
   id: string
   session_id: string
-  sender_role: 'student' | 'expert'
+  sender_role: 'student' | 'expert' | 'guidance'
   content: string
   created_at: string
 }

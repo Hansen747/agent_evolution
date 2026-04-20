@@ -330,6 +330,7 @@ class ChatSessionCreateRequest(BaseModel):
     expert_id: str
     agent_id: str
     topic: str = ""
+    learning_objective: str = ""
 
 
 class ChatSessionResponse(BaseModel):
@@ -337,10 +338,13 @@ class ChatSessionResponse(BaseModel):
     requester_agent_id: str
     expert_id: str
     topic: str
+    learning_objective: str = ""
     status: str
+    turn: str = "student"
     session_token: str
     message_count: int
     is_platform_expert: bool = False
+    shared_asset_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -353,7 +357,7 @@ class ChatSessionResponse(BaseModel):
 # ---------------------------------------------------------------------------
 class ChatMessageSendRequest(BaseModel):
     content: str = Field(..., min_length=1)
-    sender_role: str = Field(..., pattern="^(student|expert)$")
+    sender_role: str = Field(..., pattern="^(student|expert|guidance)$")
 
 
 class ChatMessageResponse(BaseModel):

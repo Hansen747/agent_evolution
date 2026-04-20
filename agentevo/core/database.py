@@ -29,6 +29,37 @@ def init_db():
     """Create all tables."""
     Base.metadata.create_all(bind=engine)
     _migrate_agents_table_if_needed()
+    _migrate_chat_sessions_if_needed()
+
+
+def _migrate_chat_sessions_if_needed():
+    """Add new columns to chat_sessions for existing SQLite databases."""
+    if "sqlite" not in settings.DATABASE_URL:
+        return
+
+    inspector = inspect(engine)
+    if "chat_sessions" not in inspector.get_table_names():
+        return
+
+    columns = {col["name"] for col in inspector.get_columns("chat_sessions")}
+    new_cols = {
+        "learning_objective": "TEXT DEFAULT ''",
+        "turn": "VARCHAR(32) DEFAULT 'student'",
+        "shared_asset_id": "VARCHAR(32)",
+    }
+
+    to_add = {k: v for k, v in new_cols.items() if k not in columns}
+    if not to_add:
+        return
+
+    raw_conn = engine.raw_connection()
+    try:
+        cursor = raw_conn.cursor()
+        for col_name, col_def in to_add.items():
+            cursor.execute(f"ALTER TABLE chat_sessions ADD COLUMN {col_name} {col_def}")
+        raw_conn.commit()
+    finally:
+        raw_conn.close()
 
 
 def _migrate_agents_table_if_needed():

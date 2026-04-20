@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { chat as chatApi } from '../../api/client'
 import type { ChatSessionResponse, ChatMessageResponse } from '../../types'
 import { PageLoader, ErrorMessage } from '../../components/Ui'
@@ -12,8 +12,8 @@ export default function ChatRoom() {
   const [messages, setMessages] = useState<ChatMessageResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [input, setInput] = useState('')
-  const [sending, setSending] = useState(false)
+  const [guidance, setGuidance] = useState('')
+  const [sendingGuidance, setSendingGuidance] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
@@ -40,25 +40,29 @@ export default function ChatRoom() {
     load()
   }, [sessionId])
 
-  // Platform expert: WebSocket  |  Community expert: REST polling
+  // Real-time: connect to observer WebSocket
   useEffect(() => {
-    if (!session || session.status !== 'open') return
+    if (!session) return
 
-    if (session.is_platform_expert) {
-      const ws = chatApi.connectWs(session.id, session.session_token)
+    if (session.status === 'open') {
+      const ws = chatApi.observeSession(session.id, session.session_token)
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
-          if (data.type === 'message') {
+          if (data.type === 'message' || data.type === 'guidance') {
             const msg: ChatMessageResponse = {
               id: data.message_id,
               session_id: session.id,
-              sender_role: data.sender_role,
+              sender_role: data.type === 'guidance' ? 'guidance' : data.sender_role,
               content: data.content,
               created_at: data.created_at,
             }
             setMessages((prev) => prev.some((m) => m.id === msg.id) ? prev : [...prev, msg])
             lastMsgIdRef.current = data.message_id
+          } else if (data.type === 'evopack_shared') {
+            setSession((prev) => prev ? { ...prev, shared_asset_id: data.asset_id } : prev)
+          } else if (data.type === 'session_closed') {
+            setSession((prev) => prev ? { ...prev, status: 'closed' } : prev)
           }
         } catch { /* ignore */ }
       }
@@ -66,10 +70,10 @@ export default function ChatRoom() {
       wsRef.current = ws
       return () => { ws.close() }
     } else {
-      startPolling()
-      return () => stopPolling()
+      // Closed session — no real-time needed
+      return
     }
-  }, [session])
+  }, [session?.id, session?.status])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -100,32 +104,28 @@ export default function ChatRoom() {
     }
   }
 
-  const handleSend = async (e: React.FormEvent) => {
+  const handleSendGuidance = async (e: React.FormEvent) => {
     e.preventDefault()
-    const content = input.trim()
+    const content = guidance.trim()
     if (!content || !session || session.status !== 'open') return
 
-    setSending(true)
+    setSendingGuidance(true)
     try {
-      if (session.is_platform_expert && wsRef.current?.readyState === WebSocket.OPEN) {
-        // Platform expert: send via WS, server echoes + replies
-        wsRef.current.send(JSON.stringify({ content }))
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'guidance', content }))
       } else {
-        // Community expert: send via REST
-        const msg = await chatApi.sendMessage(sessionId!, { content, sender_role: 'student' })
-        setMessages((prev) => prev.some((m) => m.id === msg.id) ? prev : [...prev, msg])
-        lastMsgIdRef.current = msg.id
+        await chatApi.sendMessage(sessionId!, { content, sender_role: 'guidance' })
       }
-      setInput('')
+      setGuidance('')
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to send')
+      setError(err instanceof Error ? err.message : 'Failed to send guidance')
     } finally {
-      setSending(false)
+      setSendingGuidance(false)
     }
   }
 
   const handleClose = async () => {
-    if (!confirm('Close this session?')) return
+    if (!confirm('Close this learning session?')) return
     try {
       await chatApi.closeSession(sessionId!)
       setSession((prev) => prev ? { ...prev, status: 'closed' } : prev)
@@ -137,27 +137,43 @@ export default function ChatRoom() {
   }
 
   if (loading) return <PageLoader />
-  if (error && !session) return <div className="max-w-3xl mx-auto px-4 py-10"><ErrorMessage message={error} /></div>
+  if (error && !session) return <div className="max-w-4xl mx-auto px-4 py-10"><ErrorMessage message={error} /></div>
   if (!session) return null
 
+  const agentMessages = messages.filter((m) => m.sender_role !== 'guidance')
+  const guidanceMessages = messages.filter((m) => m.sender_role === 'guidance')
+
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6 animate-fade-in flex flex-col" style={{ height: 'calc(100vh - 80px)' }}>
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 animate-fade-in flex flex-col" style={{ height: 'calc(100vh - 80px)' }}>
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="font-display text-xl text-charcoal-800">
-            {session.topic || 'Chat Session'}
+            {session.topic || 'Learning Session'}
           </h1>
+          {session.learning_objective && (
+            <p className="text-sm text-charcoal-400 mt-1 max-w-xl">
+              Objective: {session.learning_objective}
+            </p>
+          )}
           <div className="flex items-center gap-2 mt-1">
             <span className={`badge ${session.status === 'open' ? 'bg-green-100 text-green-700' : 'bg-charcoal-100 text-charcoal-500'}`}>
               {session.status}
             </span>
-            {session.is_platform_expert ? (
-              <span className="badge bg-blue-100 text-blue-700">Platform Expert</span>
-            ) : (
-              <span className="badge badge-charcoal">Community Expert</span>
+            {session.status === 'open' && (
+              <span className="badge bg-blue-100 text-blue-700">
+                Turn: {session.turn === 'student' ? 'Student Agent' : 'Expert Agent'}
+              </span>
             )}
             <span className="text-xs text-charcoal-300">{messages.length} messages</span>
+            {session.shared_asset_id && (
+              <Link
+                to={`/marketplace/${session.shared_asset_id}`}
+                className="badge bg-sage-100 text-sage-700 hover:bg-sage-200 cursor-pointer"
+              >
+                EvoPack Received
+              </Link>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -170,49 +186,82 @@ export default function ChatRoom() {
 
       {error && <div className="mb-2"><ErrorMessage message={error} /></div>}
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto card p-4 mb-4 space-y-3 bg-cream-50">
-        {messages.length === 0 ? (
-          <div className="text-center text-charcoal-300 py-16">
-            No messages yet. Start the conversation!
+      <div className="flex-1 flex gap-4 min-h-0">
+        {/* Main conversation (read-only) */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="text-xs font-medium text-charcoal-400 mb-2 uppercase tracking-wide">
+            Agent Conversation (read-only)
           </div>
-        ) : (
-          messages.map((msg) => (
-            <div key={msg.id} className={`flex ${msg.sender_role === 'student' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[75%] rounded-xl px-4 py-2.5 ${
-                msg.sender_role === 'student'
-                  ? 'bg-sage-100 text-charcoal-700'
-                  : 'bg-white border border-cream-200 text-charcoal-700'
-              }`}>
-                <div className="text-2xs font-medium mb-1 opacity-60">
-                  {msg.sender_role === 'student' ? 'You (Student)' : 'Expert'}
-                </div>
-                <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
-                <div className="text-2xs text-charcoal-300 mt-1">
-                  {new Date(msg.created_at).toLocaleTimeString()}
-                </div>
+          <div className="flex-1 overflow-y-auto card p-4 space-y-3 bg-cream-50">
+            {agentMessages.length === 0 ? (
+              <div className="text-center text-charcoal-300 py-16">
+                Waiting for agents to start the conversation...
               </div>
-            </div>
-          ))
-        )}
-        <div ref={messagesEndRef} />
-      </div>
+            ) : (
+              agentMessages.map((msg) => (
+                <div key={msg.id} className={`flex ${msg.sender_role === 'student' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[80%] rounded-xl px-4 py-2.5 ${
+                    msg.sender_role === 'student'
+                      ? 'bg-sage-100 text-charcoal-700'
+                      : 'bg-white border border-cream-200 text-charcoal-700'
+                  }`}>
+                    <div className="text-2xs font-medium mb-1 opacity-60">
+                      {msg.sender_role === 'student' ? 'Student Agent' : 'Expert Agent'}
+                    </div>
+                    <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
+                    <div className="text-2xs text-charcoal-300 mt-1">
+                      {new Date(msg.created_at).toLocaleTimeString()}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        </div>
 
-      {/* Input */}
-      {session.status === 'open' && (
-        <form onSubmit={handleSend} className="flex gap-2">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Type a message..."
-            className="input flex-1"
-            disabled={sending}
-          />
-          <button type="submit" disabled={sending || !input.trim()} className="btn-primary px-6">
-            {sending ? '...' : 'Send'}
-          </button>
-        </form>
-      )}
+        {/* Guidance sidebar */}
+        <div className="w-72 flex flex-col shrink-0">
+          <div className="text-xs font-medium text-charcoal-400 mb-2 uppercase tracking-wide">
+            Your Guidance
+          </div>
+          <div className="flex-1 overflow-y-auto card p-3 space-y-2 bg-amber-50/50 mb-2">
+            {guidanceMessages.length === 0 ? (
+              <div className="text-center text-charcoal-300 text-xs py-8">
+                Send guidance to steer your agent's learning direction.
+              </div>
+            ) : (
+              guidanceMessages.map((msg) => (
+                <div key={msg.id} className="rounded-lg px-3 py-2 bg-amber-100/60 text-charcoal-600">
+                  <div className="text-xs whitespace-pre-wrap">{msg.content}</div>
+                  <div className="text-2xs text-charcoal-300 mt-1">
+                    {new Date(msg.created_at).toLocaleTimeString()}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {session.status === 'open' && (
+            <form onSubmit={handleSendGuidance} className="flex flex-col gap-2">
+              <textarea
+                value={guidance}
+                onChange={(e) => setGuidance(e.target.value)}
+                placeholder="Guide your agent... e.g., 'Ask more about error handling'"
+                className="input text-sm min-h-[60px] resize-none"
+                disabled={sendingGuidance}
+              />
+              <button
+                type="submit"
+                disabled={sendingGuidance || !guidance.trim()}
+                className="btn-primary text-xs w-full"
+              >
+                {sendingGuidance ? '...' : 'Send Guidance'}
+              </button>
+            </form>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

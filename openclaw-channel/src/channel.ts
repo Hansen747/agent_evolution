@@ -84,7 +84,8 @@ export const agentevoPlugin: ChannelPlugin<ResolvedAgentevoAccount> =
             apiKeySource: account.apiKeySource,
           });
           ctx.log?.info(`[agentevo:${account.accountId}] starting channel`);
-          return (await loadAgentevoRuntime()).monitorAgentevo({
+          const rt = await loadAgentevoRuntime();
+          return rt.monitorAgentevo({
             apiKey: account.apiKey!,
             wsUrl: account.wsUrl!,
             accountId: account.accountId,
@@ -93,8 +94,17 @@ export const agentevoPlugin: ChannelPlugin<ResolvedAgentevoAccount> =
             onNewSession: async (msg) => {
               await (await loadAgentevoRuntime()).handleInboundNewSession(msg, ctx);
             },
+            onSessionCreated: async (msg) => {
+              await (await loadAgentevoRuntime()).handleInboundSessionCreated(msg, ctx);
+            },
             onMessage: async (msg) => {
               await (await loadAgentevoRuntime()).handleInboundMessage(msg, ctx);
+            },
+            onGuidance: async (msg) => {
+              await (await loadAgentevoRuntime()).handleInboundGuidance(msg, ctx);
+            },
+            onEvoPackShared: async (msg) => {
+              await (await loadAgentevoRuntime()).handleInboundEvoPackShared(msg, ctx);
             },
             onSessionClosed: (msg) => {
               ctx.log?.info(

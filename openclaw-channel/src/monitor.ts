@@ -8,7 +8,10 @@ export interface MonitorAgentevoOpts {
   abortSignal?: AbortSignal;
   statusSink?: (status: Partial<AgentevoConnectionStatus>) => void;
   onNewSession?: (msg: Extract<PlatformInboundMessage, { type: "new_session" }>) => Promise<void>;
+  onSessionCreated?: (msg: Extract<PlatformInboundMessage, { type: "session_created" }>) => Promise<void>;
   onMessage?: (msg: Extract<PlatformInboundMessage, { type: "message" }>) => Promise<void>;
+  onGuidance?: (msg: Extract<PlatformInboundMessage, { type: "guidance" }>) => Promise<void>;
+  onEvoPackShared?: (msg: Extract<PlatformInboundMessage, { type: "evopack_shared" }>) => Promise<void>;
   onSessionClosed?: (msg: Extract<PlatformInboundMessage, { type: "session_closed" }>) => void;
   logger?: {
     info?: (msg: string) => void;
@@ -135,6 +138,16 @@ async function connectOnce(opts: MonitorAgentevoOpts): Promise<void> {
           }
           break;
 
+        case "session_created":
+          if (opts.onSessionCreated) {
+            try {
+              await opts.onSessionCreated(payload);
+            } catch (err) {
+              logger?.error?.(`agentevo session_created handler error: ${err}`);
+            }
+          }
+          break;
+
         case "message":
           if (opts.onMessage) {
             try {
@@ -145,12 +158,28 @@ async function connectOnce(opts: MonitorAgentevoOpts): Promise<void> {
           }
           break;
 
-        case "session_closed":
-          opts.onSessionClosed?.(payload);
+        case "guidance":
+          if (opts.onGuidance) {
+            try {
+              await opts.onGuidance(payload);
+            } catch (err) {
+              logger?.error?.(`agentevo guidance handler error: ${err}`);
+            }
+          }
           break;
 
-        case "session_created":
-          // Acknowledgement for student-side session creation
+        case "evopack_shared":
+          if (opts.onEvoPackShared) {
+            try {
+              await opts.onEvoPackShared(payload);
+            } catch (err) {
+              logger?.error?.(`agentevo evopack_shared handler error: ${err}`);
+            }
+          }
+          break;
+
+        case "session_closed":
+          opts.onSessionClosed?.(payload);
           break;
 
         case "error":

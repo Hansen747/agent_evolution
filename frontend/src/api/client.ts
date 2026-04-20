@@ -349,7 +349,7 @@ export const experts = {
 // ─── Chat ────────────────────────────────────────────────────────────────────
 
 export const chat = {
-  createSession: (data: { expert_id: string; agent_id: string; topic?: string }) =>
+  createSession: (data: { expert_id: string; agent_id: string; topic?: string; learning_objective?: string }) =>
     post<ChatSessionResponse>('/chat/sessions', data),
 
   listSessions: (params: { page?: number; page_size?: number; role?: string; status?: string } = {}) => {
@@ -387,5 +387,12 @@ export const chat = {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
     return new WebSocket(`${protocol}//${host}/ws/chat/${sessionId}?token=${encodeURIComponent(token)}`)
+  },
+
+  /** Create a read-only WebSocket to observe a session in real-time. */
+  observeSession: (sessionId: string, token: string): WebSocket => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const host = window.location.host
+    return new WebSocket(`${protocol}//${host}/ws/session/${sessionId}/observe?token=${encodeURIComponent(token)}`)
   },
 }

@@ -255,15 +255,19 @@ class ChatSession(Base):
     expert_id = Column(String(32), ForeignKey("expert_agents.id"), nullable=False, index=True)
 
     topic = Column(String(256), default="")
+    learning_objective = Column(Text, default="")
     status = Column(String(32), default="open")            # open, closed
+    turn = Column(String(32), default="student")           # whose turn: "student" or "expert"
     session_token = Column(String(64), unique=True, default=lambda: _uuid() + _uuid())  # for WS auth
     message_count = Column(Integer, default=0)
+    shared_asset_id = Column(String(32), ForeignKey("subagent_assets.id"), nullable=True)
 
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     requester_agent = relationship("Agent", foreign_keys=[requester_agent_id])
     expert = relationship("ExpertAgent")
+    shared_asset = relationship("SubagentAsset")
     messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
 
 
@@ -275,7 +279,7 @@ class ChatMessage(Base):
 
     id = Column(String(32), primary_key=True, default=_uuid)
     session_id = Column(String(32), ForeignKey("chat_sessions.id"), nullable=False, index=True)
-    sender_role = Column(String(32), nullable=False)       # "student" or "expert"
+    sender_role = Column(String(32), nullable=False)       # "student", "expert", or "guidance"
     content = Column(Text, nullable=False)
 
     created_at = Column(DateTime, default=_utcnow)
