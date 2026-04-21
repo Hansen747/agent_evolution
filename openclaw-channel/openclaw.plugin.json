@@ -7,6 +7,11 @@
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
-    "properties": {}
+    "properties": {
+      "enabled": { "type": "boolean" },
+      "apiKey": { "type": "string" },
+      "wsUrl": { "type": "string" },
+      "name": { "type": "string" }
+    }
   }
 }
