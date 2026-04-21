@@ -72,6 +72,7 @@ export default function MyAgents() {
   const [agentsList, setAgentsList] = useState<AgentResponse[]>([])
   const [bindingKeys, setBindingKeys] = useState<AgentBindingKeyResponse[]>([])
   const [expertProfiles, setExpertProfiles] = useState<ExpertResponse[]>([])
+  const [onlineStatus, setOnlineStatus] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [setupOpen, setSetupOpen] = useState(false)
@@ -93,14 +94,16 @@ export default function MyAgents() {
     setLoading(true)
     setError('')
     try {
-      const [list, keyList, myExperts] = await Promise.all([
+      const [list, keyList, myExperts, status] = await Promise.all([
         agentsApi.list(),
         agentsApi.listBindingKeys(),
         expertsApi.myList(),
+        agentsApi.onlineStatus().catch(() => ({} as Record<string, boolean>)),
       ])
       setAgentsList(list)
       setBindingKeys(keyList)
       setExpertProfiles(myExperts)
+      setOnlineStatus(status)
       if (!setupInitialized) {
         setSetupOpen(list.length === 0)
         setSetupInitialized(true)
@@ -113,6 +116,17 @@ export default function MyAgents() {
   }
 
   useEffect(() => { fetchData() }, [])
+
+  useEffect(() => {
+    if (agentsList.length === 0) return
+    const interval = setInterval(async () => {
+      try {
+        const status = await agentsApi.onlineStatus()
+        setOnlineStatus(status)
+      } catch {}
+    }, 10_000)
+    return () => clearInterval(interval)
+  }, [agentsList.length])
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -263,7 +277,7 @@ export default function MyAgents() {
     }
   }
 
-  const activeAgents = agentsList.filter((agent) => agent.status === 'active').length
+  const activeAgents = agentsList.filter((agent) => onlineStatus[agent.id]).length
   const readyBindingKeys = bindingKeys.filter((bindingKey) => !bindingKey.used_at && !bindingKey.revoked_at).length
   const registeredExperts = expertProfiles.length
 
@@ -288,9 +302,9 @@ export default function MyAgents() {
           <p className="text-sm text-charcoal-400">Agent identities currently linked to this user account.</p>
         </div>
         <div className="card p-5 bg-sage-50/70 border-sage-200">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sage-700 mb-2">Active Agents</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sage-700 mb-2">Online Agents</p>
           <p className="font-display text-3xl text-charcoal-800">{activeAgents}</p>
-          <p className="text-sm text-charcoal-400">Agents that have recently reported an active status.</p>
+          <p className="text-sm text-charcoal-400">Agents currently connected to the platform via WebSocket.</p>
         </div>
         <div className="card p-5 bg-blue-50/70 border-blue-200">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700 mb-2">Ready Binding Keys</p>
@@ -334,8 +348,9 @@ export default function MyAgents() {
                   <div>
                     <div className="flex flex-wrap items-center gap-2 mb-1">
                       <h3 className="font-display text-lg text-charcoal-700">{agent.name}</h3>
-                      <span className={`badge ${agent.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-charcoal-100 text-charcoal-500'}`}>
-                        {agent.status}
+                      <span className={`badge ${onlineStatus[agent.id] ? 'bg-green-100 text-green-700' : 'bg-charcoal-100 text-charcoal-500'}`}>
+                        <span className={`inline-block w-2 h-2 rounded-full mr-1 ${onlineStatus[agent.id] ? 'bg-green-500' : 'bg-charcoal-400'}`} />
+                        {onlineStatus[agent.id] ? 'Online' : 'Offline'}
                       </span>
                       <span className="badge badge-charcoal">{agent.agent_type}</span>
                       <span className={`badge ${ASSOCIATION_LABELS[agent.association_type]?.tone || 'bg-charcoal-100 text-charcoal-500'}`}>
@@ -401,6 +416,9 @@ export default function MyAgents() {
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
+                    <Link to={`/dashboard/agents/${agent.id}/chat`} className={`btn-primary text-xs ${onlineStatus[agent.id] ? '' : 'opacity-50'}`}>
+                      Chat
+                    </Link>
                     <button onClick={() => openExpertEditor(agent)} className="btn-secondary text-xs">
                       {expert ? 'Edit Expert Profile' : 'Register As Expert'}
                     </button>

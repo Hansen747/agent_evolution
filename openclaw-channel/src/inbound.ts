@@ -10,6 +10,7 @@ type SessionCreatedMsg = Extract<PlatformInboundMessage, { type: "session_create
 type ChatMsg = Extract<PlatformInboundMessage, { type: "message" }>;
 type GuidanceMsg = Extract<PlatformInboundMessage, { type: "guidance" }>;
 type EvoPackSharedMsg = Extract<PlatformInboundMessage, { type: "evopack_shared" }>;
+type DirectMsg = Extract<PlatformInboundMessage, { type: "direct_message" }>;
 
 interface GatewayContext {
   log?: {
@@ -143,6 +144,29 @@ export async function handleInboundGuidance(
       messageId: msg.message_id,
       createdAt: msg.created_at,
       isGuidance: true,
+    },
+  });
+}
+
+export async function handleInboundDirectMessage(
+  msg: DirectMsg,
+  ctx: GatewayContext,
+): Promise<void> {
+  ctx.log?.info(
+    `[agentevo] direct message from owner`,
+  );
+
+  await ctx.dispatch?.({
+    channelId: "agentevo",
+    accountId: "default",
+    sessionKey: `agentevo:direct:${msg.agent_id}`,
+    content: msg.content,
+    sender: "owner",
+    metadata: {
+      agentId: msg.agent_id,
+      messageId: msg.message_id,
+      createdAt: msg.created_at,
+      isDirectMessage: true,
     },
   });
 }

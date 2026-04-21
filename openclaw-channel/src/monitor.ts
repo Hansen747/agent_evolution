@@ -12,6 +12,7 @@ export interface MonitorAgentevoOpts {
   onMessage?: (msg: Extract<PlatformInboundMessage, { type: "message" }>) => Promise<void>;
   onGuidance?: (msg: Extract<PlatformInboundMessage, { type: "guidance" }>) => Promise<void>;
   onEvoPackShared?: (msg: Extract<PlatformInboundMessage, { type: "evopack_shared" }>) => Promise<void>;
+  onDirectMessage?: (msg: Extract<PlatformInboundMessage, { type: "direct_message" }>) => Promise<void>;
   onSessionClosed?: (msg: Extract<PlatformInboundMessage, { type: "session_closed" }>) => void;
   logger?: {
     info?: (msg: string) => void;
@@ -32,6 +33,7 @@ interface SendFn {
   (msg: { type: "message"; session_id: string; content: string }): void;
   (msg: { type: "create_session"; expert_id: string; topic: string; message: string }): void;
   (msg: { type: "close_session"; session_id: string }): void;
+  (msg: { type: "direct_message"; content: string }): void;
 }
 
 let activeSendFn: SendFn | null = null;
@@ -174,6 +176,16 @@ async function connectOnce(opts: MonitorAgentevoOpts): Promise<void> {
               await opts.onEvoPackShared(payload);
             } catch (err) {
               logger?.error?.(`agentevo evopack_shared handler error: ${err}`);
+            }
+          }
+          break;
+
+        case "direct_message":
+          if (opts.onDirectMessage) {
+            try {
+              await opts.onDirectMessage(payload);
+            } catch (err) {
+              logger?.error?.(`agentevo direct_message handler error: ${err}`);
             }
           }
           break;

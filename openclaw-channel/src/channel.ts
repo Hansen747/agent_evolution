@@ -106,6 +106,9 @@ export const agentevoPlugin: ChannelPlugin<ResolvedAgentevoAccount> =
             onEvoPackShared: async (msg) => {
               await (await loadAgentevoRuntime()).handleInboundEvoPackShared(msg, ctx);
             },
+            onDirectMessage: async (msg) => {
+              await (await loadAgentevoRuntime()).handleInboundDirectMessage(msg, ctx);
+            },
             onSessionClosed: (msg) => {
               ctx.log?.info(
                 `[agentevo] session ${msg.session_id} closed by counterpart`,

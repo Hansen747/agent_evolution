@@ -37,17 +37,29 @@ Protocol (JSON over WS):
   -- Session close --
   Agent→Platform:  {"type": "close_session", "session_id": "..."}
   Platform→Both:   {"type": "session_closed", "session_id": "..."}
+
+  -- Direct message (user ↔ agent free chat, no session/turn control) --
+  User→Platform:   {"type": "direct_message", "content": "..."}
+  Platform→Agent:  {"type": "direct_message", "agent_id": "...", "content": "...",
+                    "from": "owner", "message_id": "...", "created_at": "..."}
+  Agent→Platform:  {"type": "direct_message", "content": "..."}
+  Platform→User:   {"type": "direct_message", "agent_id": "...", "content": "...",
+                    "from": "agent", "message_id": "...", "created_at": "..."}
 """
 
 import json
 import logging
+import uuid
 from datetime import datetime, timezone
 from typing import Dict, Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session as DBSession
 
+import jwt
+
 from agentevo.core.database import SessionLocal
+from agentevo.core.config import settings
 from agentevo.models.models import Agent, ExpertAgent, ChatSession, ChatMessage, SubagentAsset
 
 logger = logging.getLogger(__name__)
@@ -91,6 +103,53 @@ class AgentConnectionManager:
 
 
 agent_manager = AgentConnectionManager()
+
+
+# ---------------------------------------------------------------------------
+# User Connection Manager (user ↔ agent direct chat)
+# ---------------------------------------------------------------------------
+
+class UserAgentConnectionManager:
+    """Manages WebSocket connections from frontend users chatting with their agents.
+
+    Key: (user_id, agent_id) → WebSocket
+    """
+
+    def __init__(self):
+        self.connections: Dict[tuple[str, str], WebSocket] = {}
+
+    async def connect(self, user_id: str, agent_id: str, websocket: WebSocket):
+        await websocket.accept()
+        old_ws = self.connections.get((user_id, agent_id))
+        if old_ws:
+            try:
+                await old_ws.close(code=4001, reason="Replaced by new connection")
+            except Exception:
+                pass
+        self.connections[(user_id, agent_id)] = websocket
+
+    def disconnect(self, user_id: str, agent_id: str):
+        self.connections.pop((user_id, agent_id), None)
+
+    async def send(self, user_id: str, agent_id: str, message: dict) -> bool:
+        ws = self.connections.get((user_id, agent_id))
+        if ws:
+            try:
+                await ws.send_json(message)
+                return True
+            except Exception:
+                self.disconnect(user_id, agent_id)
+        return False
+
+    def get_user_id_for_agent(self, agent_id: str) -> Optional[str]:
+        """Find the user_id that has an active direct chat with this agent."""
+        for (uid, aid) in self.connections:
+            if aid == agent_id:
+                return uid
+        return None
+
+
+user_agent_manager = UserAgentConnectionManager()
 
 
 # ---------------------------------------------------------------------------
@@ -389,6 +448,34 @@ async def _handle_close_session(
     await _broadcast_to_observers(session.id, closed_msg)
 
 
+async def _handle_direct_message_from_agent(
+    agent: Agent, payload: dict, websocket: WebSocket, db: DBSession
+):
+    """Agent sends a direct message back to its owner."""
+    content = payload.get("content", "").strip()
+    if not content:
+        await websocket.send_json({"type": "error", "detail": "Missing content"})
+        return
+
+    if not agent.owner_id:
+        await websocket.send_json({"type": "error", "detail": "Agent is not bound to any user"})
+        return
+
+    msg_id = uuid.uuid4().hex
+    now = datetime.now(timezone.utc).isoformat()
+
+    outgoing = {
+        "type": "direct_message",
+        "agent_id": agent.id,
+        "content": content,
+        "from": "agent",
+        "message_id": msg_id,
+        "created_at": now,
+    }
+
+    await user_agent_manager.send(agent.owner_id, agent.id, outgoing)
+
+
 # ---------------------------------------------------------------------------
 # Frontend observer WebSocket (read-only session subscription)
 # ---------------------------------------------------------------------------
@@ -549,6 +636,8 @@ async def agent_channel(websocket: WebSocket, key: str = ""):
                     await _handle_share_evopack(agent, payload, websocket, db)
                 elif msg_type == "close_session":
                     await _handle_close_session(agent, payload, websocket, db)
+                elif msg_type == "direct_message":
+                    await _handle_direct_message_from_agent(agent, payload, websocket, db)
                 else:
                     await websocket.send_json({"type": "error", "detail": f"Unknown message type: {msg_type}"})
 
@@ -561,4 +650,109 @@ async def agent_channel(websocket: WebSocket, key: str = ""):
             agent.status = "offline"
             db.commit()
             logger.info(f"Agent disconnected: {agent.name} ({agent.id})")
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# User-to-Agent direct chat WebSocket
+# ---------------------------------------------------------------------------
+
+@router.websocket("/ws/agent/{agent_id}/chat")
+async def user_agent_chat(websocket: WebSocket, agent_id: str, token: str = ""):
+    """
+    WebSocket for a user to chat directly with their own agent.
+
+    Query params:
+      - token: user JWT for authentication
+    """
+    db = SessionLocal()
+    user_id = None
+    try:
+        if not token:
+            await websocket.close(code=4003, reason="Missing token")
+            return
+
+        try:
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        except Exception:
+            payload = None
+        if not payload:
+            await websocket.close(code=4003, reason="Invalid token")
+            return
+        user_id = payload.get("sub")
+        if not user_id:
+            await websocket.close(code=4003, reason="Invalid token")
+            return
+
+        agent = db.query(Agent).filter(
+            Agent.id == agent_id,
+            Agent.owner_id == user_id,
+        ).first()
+        if not agent:
+            await websocket.close(code=4004, reason="Agent not found or not yours")
+            return
+
+        await user_agent_manager.connect(user_id, agent_id, websocket)
+
+        is_online = agent_manager.is_online(agent_id)
+        await websocket.send_json({
+            "type": "connected",
+            "agent_id": agent.id,
+            "agent_name": agent.name,
+            "agent_online": is_online,
+        })
+
+        logger.info(f"User {user_id} opened direct chat with agent {agent.name} ({agent.id})")
+
+        try:
+            while True:
+                data = await websocket.receive_text()
+                try:
+                    msg = json.loads(data)
+                except json.JSONDecodeError:
+                    await websocket.send_json({"type": "error", "detail": "Invalid JSON"})
+                    continue
+
+                msg_type = msg.get("type", "")
+
+                if msg_type == "direct_message":
+                    content = msg.get("content", "").strip()
+                    if not content:
+                        await websocket.send_json({"type": "error", "detail": "Missing content"})
+                        continue
+
+                    if not agent_manager.is_online(agent_id):
+                        await websocket.send_json({"type": "error", "detail": "Agent is offline"})
+                        continue
+
+                    msg_id = uuid.uuid4().hex
+                    now = datetime.now(timezone.utc).isoformat()
+
+                    await agent_manager.send(agent_id, {
+                        "type": "direct_message",
+                        "agent_id": agent_id,
+                        "content": content,
+                        "from": "owner",
+                        "message_id": msg_id,
+                        "created_at": now,
+                    })
+
+                    await websocket.send_json({
+                        "type": "direct_message_sent",
+                        "message_id": msg_id,
+                        "created_at": now,
+                    })
+
+                elif msg_type == "ping":
+                    await websocket.send_json({"type": "pong"})
+                else:
+                    await websocket.send_json({"type": "error", "detail": f"Unknown type: {msg_type}"})
+
+        except WebSocketDisconnect:
+            pass
+
+    finally:
+        if user_id:
+            user_agent_manager.disconnect(user_id, agent_id)
+            logger.info(f"User {user_id} closed direct chat with agent {agent_id}")
         db.close()

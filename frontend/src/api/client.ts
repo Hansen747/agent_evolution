@@ -139,6 +139,13 @@ export const agents = {
   },
   logs: (agentId: string, page = 1, pageSize = 20) =>
     get<PaginatedResponse<OperationLogResponse>>(`/agents/logs/${agentId}?page=${page}&page_size=${pageSize}`),
+  onlineStatus: () => get<Record<string, boolean>>('/agents/online-status'),
+  directChat: (agentId: string): WebSocket => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const host = window.location.host
+    const token = getToken() || ''
+    return new WebSocket(`${protocol}//${host}/ws/agent/${agentId}/chat?token=${encodeURIComponent(token)}`)
+  },
 }
 
 // ─── Assets ───────────────────────────────────────────────────────────────────

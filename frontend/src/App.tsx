@@ -25,6 +25,7 @@ import MyBounties from './pages/dashboard/MyBounties'
 import TradeHistory from './pages/dashboard/TradeHistory'
 import MyChats from './pages/dashboard/MyChats'
 import ChatRoom from './pages/dashboard/ChatRoom'
+import AgentChat from './pages/dashboard/AgentChat'
 
 export default function App() {
   return (
@@ -47,6 +48,7 @@ export default function App() {
         <Route path="/dashboard" element={<ProtectedRoute><DashboardShell /></ProtectedRoute>}>
           <Route index element={<Dashboard />} />
           <Route path="agents" element={<MyAgents />} />
+          <Route path="agents/:agentId/chat" element={<AgentChat />} />
           <Route path="assets" element={<MyAssets />} />
           <Route path="assets/new" element={<CreateAsset />} />
           <Route path="bounties" element={<MyBounties />} />

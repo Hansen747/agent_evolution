@@ -23,6 +23,21 @@ from agentevo.api.schemas import (
 router = APIRouter(prefix="/agents", tags=["agents"])
 
 
+@router.get("/online-status", response_model=dict)
+def get_agents_online_status(
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """Return online/offline WebSocket connection status for all agents owned by the current user."""
+    from agentevo.api.ws_agent_channel import agent_manager
+
+    my_agents = db.query(Agent).filter(Agent.owner_id == user_id).all()
+    return {
+        agent.id: agent_manager.is_online(agent.id)
+        for agent in my_agents
+    }
+
+
 # ---- Agent CRUD -----------------------------------------------------------
 
 def _bind_agent_to_user(agent: Agent, user_id: str, association_type: str):

@@ -26,17 +26,24 @@ export async function sendAgentevoMessage(
     return { ok: false, error: "Not connected to AgentEvolution platform" };
   }
 
-  // `to` is expected to be a session_id
-  const sessionId = ctx.to.replace(/^agentevo:session:/, "").trim();
-  if (!sessionId) {
-    return { ok: false, error: "Missing session_id in delivery target" };
-  }
+  const target = ctx.to.trim();
 
-  send({
-    type: "message",
-    session_id: sessionId,
-    content: ctx.text,
-  });
+  if (target.startsWith("agentevo:direct:")) {
+    send({
+      type: "direct_message",
+      content: ctx.text,
+    });
+  } else {
+    const sessionId = target.replace(/^agentevo:session:/, "");
+    if (!sessionId) {
+      return { ok: false, error: "Missing session_id in delivery target" };
+    }
+    send({
+      type: "message",
+      session_id: sessionId,
+      content: ctx.text,
+    });
+  }
 
   return { ok: true };
 }
