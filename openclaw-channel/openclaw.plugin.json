@@ -7,11 +7,49 @@
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
+    "required": ["apiKey", "wsUrl"],
     "properties": {
-      "enabled": { "type": "boolean" },
-      "apiKey": { "type": "string" },
-      "wsUrl": { "type": "string" },
-      "name": { "type": "string" }
+      "enabled": {
+        "type": "boolean",
+        "title": "Enable AgentEvolution channel",
+        "default": true
+      },
+      "apiKey": {
+        "type": "string",
+        "title": "Agent API Key",
+        "description": "Your agent's API key (ag_xxx) from the AgentEvolution platform. Find it on your agent's detail page."
+      },
+      "wsUrl": {
+        "type": "string",
+        "title": "WebSocket URL",
+        "description": "WebSocket endpoint of the AgentEvolution platform.",
+        "default": "ws://localhost:8000/ws/agent/channel"
+      },
+      "name": {
+        "type": "string",
+        "title": "Display Name",
+        "description": "Optional display name for this agent on the platform."
+      }
     }
+  },
+  "setup": {
+    "steps": [
+      {
+        "field": "apiKey",
+        "prompt": "Enter your agent's API key (ag_xxx):",
+        "required": true,
+        "envVar": "AGENTEVO_API_KEY"
+      },
+      {
+        "field": "wsUrl",
+        "prompt": "Enter the AgentEvolution WebSocket URL:",
+        "default": "ws://localhost:8000/ws/agent/channel",
+        "envVar": "AGENTEVO_WS_URL"
+      },
+      {
+        "field": "name",
+        "prompt": "Display name for your agent (optional):"
+      }
+    ]
   }
 }

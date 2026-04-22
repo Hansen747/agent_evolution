@@ -45,6 +45,18 @@ export function getActiveSend(): SendFn | null {
 export async function monitorAgentevo(opts: MonitorAgentevoOpts): Promise<void> {
   const { apiKey, wsUrl, abortSignal, statusSink, logger } = opts;
 
+  logger?.info?.(`agentevo: connecting to ${wsUrl}`);
+  logger?.info?.(`agentevo: using API key ${apiKey.slice(0, 6)}...${apiKey.slice(-4)}`);
+
+  if (!apiKey?.trim()) {
+    logger?.error?.("agentevo: API key is empty — check your channel config or AGENTEVO_API_KEY env var");
+    return;
+  }
+  if (!wsUrl?.trim()) {
+    logger?.error?.("agentevo: WebSocket URL is empty — check your channel config or AGENTEVO_WS_URL env var");
+    return;
+  }
+
   await runWithReconnect(
     () => connectOnce(opts),
     {
@@ -54,11 +66,11 @@ export async function monitorAgentevo(opts: MonitorAgentevoOpts): Promise<void> 
       jitterRatio: 0.2,
       onError: (err) => {
         const msg = err instanceof Error ? err.message : String(err);
-        logger?.error?.(`agentevo connection failed: ${msg}`);
+        logger?.error?.(`agentevo: connection failed: ${msg}`);
         statusSink?.({ lastError: msg, connected: false });
       },
       onReconnect: (delayMs) => {
-        logger?.info?.(`agentevo reconnecting in ${Math.round(delayMs / 1000)}s`);
+        logger?.info?.(`agentevo: reconnecting in ${Math.round(delayMs / 1000)}s...`);
       },
     },
   );
@@ -90,7 +102,7 @@ async function connectOnce(opts: MonitorAgentevoOpts): Promise<void> {
 
     ws.on("open", () => {
       opened = true;
-      logger?.info?.("agentevo: WebSocket connected, awaiting auth confirmation");
+      logger?.info?.("agentevo: ✓ WebSocket connected, awaiting auth confirmation...");
 
       // Set up send function
       activeSendFn = ((msg: any) => {
@@ -124,7 +136,8 @@ async function connectOnce(opts: MonitorAgentevoOpts): Promise<void> {
             lastConnectedAt: Date.now(),
             lastError: null,
           });
-          logger?.info?.(`agentevo: authenticated as ${payload.agent_name} (${payload.agent_id})`);
+          logger?.info?.(`agentevo: ✓ authenticated as "${payload.agent_name}" (id: ${payload.agent_id})`);
+          logger?.info?.(`agentevo: ✓ channel ready — listening for sessions and messages`);
           break;
 
         case "pong":
@@ -195,7 +208,7 @@ async function connectOnce(opts: MonitorAgentevoOpts): Promise<void> {
           break;
 
         case "error":
-          logger?.error?.(`agentevo platform error: ${payload.detail}`);
+          logger?.error?.(`agentevo: ✗ platform error: ${payload.detail}`);
           break;
       }
     });
@@ -205,16 +218,20 @@ async function connectOnce(opts: MonitorAgentevoOpts): Promise<void> {
       abortSignal?.removeEventListener("abort", onAbort);
       statusSink?.({ connected: false });
 
+      const reasonStr = reason?.toString() || "";
       if (opened) {
-        logger?.info?.(`agentevo: connection closed (code=${code})`);
+        logger?.info?.(`agentevo: connection closed (code=${code}${reasonStr ? `, reason=${reasonStr}` : ""})`);
         resolve();
       } else {
-        reject(new Error(`WebSocket closed before open: code=${code} reason=${reason?.toString()}`));
+        const detail = `WebSocket closed before open: code=${code}${reasonStr ? ` reason=${reasonStr}` : ""}`;
+        logger?.error?.(`agentevo: ✗ ${detail}`);
+        reject(new Error(detail));
       }
     });
 
     ws.on("error", (err) => {
       cleanup();
+      logger?.error?.(`agentevo: ✗ WebSocket error: ${err.message}`);
       statusSink?.({ connected: false, lastError: err.message });
       if (!opened) {
         reject(err);

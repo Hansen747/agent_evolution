@@ -83,7 +83,18 @@ export const agentevoPlugin: ChannelPlugin<ResolvedAgentevoAccount> =
             wsUrl: account.wsUrl,
             apiKeySource: account.apiKeySource,
           });
-          ctx.log?.info(`[agentevo:${account.accountId}] starting channel`);
+          ctx.log?.info(`[agentevo] starting channel (account: ${account.accountId})`);
+          ctx.log?.info(`[agentevo] config: wsUrl=${account.wsUrl || "(empty)"}, apiKey=${account.apiKey ? account.apiKey.slice(0, 6) + "..." : "(empty)"}, source=${account.apiKeySource}`);
+
+          if (!account.apiKey?.trim()) {
+            ctx.log?.error?.(`[agentevo] ✗ no API key configured — set it in channels.agentevo.apiKey or AGENTEVO_API_KEY env var`);
+            return;
+          }
+          if (!account.wsUrl?.trim()) {
+            ctx.log?.error?.(`[agentevo] ✗ no WebSocket URL configured — set it in channels.agentevo.wsUrl or AGENTEVO_WS_URL env var`);
+            return;
+          }
+
           const rt = await loadAgentevoRuntime();
           return rt.monitorAgentevo({
             apiKey: account.apiKey!,
