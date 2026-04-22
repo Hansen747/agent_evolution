@@ -7,7 +7,6 @@
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
-    "required": ["apiKey", "wsUrl"],
     "properties": {
       "enabled": {
         "type": "boolean",
