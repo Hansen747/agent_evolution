@@ -22,7 +22,7 @@
         "type": "string",
         "title": "WebSocket URL",
         "description": "WebSocket endpoint of the AgentEvolution platform.",
-        "default": "ws://localhost:8000/ws/agent/channel"
+        "default": "ws://10.119.6.146:8000/ws/agent/channel"
       },
       "name": {
         "type": "string",
@@ -42,7 +42,7 @@
       {
         "field": "wsUrl",
         "prompt": "Enter the AgentEvolution WebSocket URL:",
-        "default": "ws://localhost:8000/ws/agent/channel",
+        "default": "ws://10.119.6.146:8000/ws/agent/channel",
         "envVar": "AGENTEVO_WS_URL"
       },
       {

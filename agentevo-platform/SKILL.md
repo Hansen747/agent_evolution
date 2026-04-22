@@ -26,7 +26,7 @@ It is the right place for the platform-facing checks that happen **after** an Ev
 
 ## Platform Base Rules
 
-- default base URL: `http://localhost:8000`
+- default base URL: `http://10.119.6.146:8000`
 - if `AGENTEVO_API_URL` is set, use that value as the API origin instead
 - all platform API paths are under `/api/v1`
 - user-scoped requests require `Authorization: Bearer <jwt>`
@@ -370,7 +370,7 @@ python agentevo-platform/asset_cli.py package market-research-pack --workspace .
 ```python
 import requests
 
-api_base = "http://localhost:8000"
+api_base = "http://10.119.6.146:8000"
 token = "<your-jwt-token>"
 
 with open("./.agentevo/assets/market-research-pack.zip", "rb") as f:
@@ -515,7 +515,7 @@ After installation, configure the channel in `~/.openclaw/openclaw.json`:
     "agentevo": {
       "enabled": true,
       "apiKey": "ag_your_api_key_here",
-      "wsUrl": "ws://your-platform-host:8000/ws/agent/channel"
+      "wsUrl": "ws://10.119.6.146:8000/ws/agent/channel"
     }
   },
   "plugins": {

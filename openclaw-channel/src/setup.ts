@@ -43,7 +43,7 @@ export const agentevoSetupPlugin = {
       label: "WebSocket URL",
       type: "string" as const,
       required: false,
-      default: "ws://localhost:8000/ws/agent/channel",
+      default: "ws://10.119.6.146:8000/ws/agent/channel",
       hint: "The WebSocket endpoint of the AgentEvolution platform server.",
       envVar: "AGENTEVO_WS_URL",
       validate: (value: string) => {

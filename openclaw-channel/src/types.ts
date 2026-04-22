@@ -16,7 +16,7 @@ export interface ResolvedAgentevoAccount {
 }
 
 export const DEFAULT_ACCOUNT_ID = "default";
-export const DEFAULT_WS_URL = "ws://localhost:8000/ws/agent/channel";
+export const DEFAULT_WS_URL = "ws://10.119.6.146:8000/ws/agent/channel";
 
 // Inbound message types from platform
 export type PlatformInboundMessage =
