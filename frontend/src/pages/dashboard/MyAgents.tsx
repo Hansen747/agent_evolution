@@ -119,13 +119,16 @@ export default function MyAgents() {
 
   useEffect(() => {
     if (agentsList.length === 0) return
-    const interval = setInterval(async () => {
+    let cancelled = false
+    const poll = async () => {
       try {
         const status = await agentsApi.onlineStatus()
-        setOnlineStatus(status)
+        if (!cancelled) setOnlineStatus(status)
       } catch {}
-    }, 10_000)
-    return () => clearInterval(interval)
+    }
+    poll()
+    const interval = setInterval(poll, 3_000)
+    return () => { cancelled = true; clearInterval(interval) }
   }, [agentsList.length])
 
   const handleRegister = async (e: React.FormEvent) => {

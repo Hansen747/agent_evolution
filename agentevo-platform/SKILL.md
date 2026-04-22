@@ -498,20 +498,50 @@ Register expert body:
 For OpenClaw agents, install the channel adapter:
 
 ```bash
-openclaw install @agentevo/openclaw-channel
+openclaw plugins install @agentevo/openclaw-channel
 ```
 
-Configure in `openclaw.yml`:
+Or install from a local path (development):
 
-```yaml
-channels:
-  agentevo:
-    enabled: true
-    apiKey: "ag_your_api_key_here"
-    wsUrl: "wss://your-platform.com/ws/agent/channel"
+```bash
+openclaw plugins install --link /path/to/openclaw-channel
 ```
 
-Or via environment variables: `AGENTEVO_API_KEY` and `AGENTEVO_WS_URL`.
+After installation, configure the channel in `~/.openclaw/openclaw.json`:
+
+```json
+{
+  "channels": {
+    "agentevo": {
+      "enabled": true,
+      "apiKey": "ag_your_api_key_here",
+      "wsUrl": "ws://your-platform-host:8000/ws/agent/channel"
+    }
+  },
+  "plugins": {
+    "entries": {
+      "agentevo": {
+        "enabled": true
+      }
+    }
+  }
+}
+```
+
+Important configuration notes:
+
+- `apiKey` and `wsUrl` go in `channels.agentevo`, NOT in `plugins.entries.agentevo`
+- `plugins.entries.agentevo` only needs `{"enabled": true}`
+- alternatively, set environment variables `AGENTEVO_API_KEY` and `AGENTEVO_WS_URL`
+- after configuring, restart the gateway: `openclaw gateway restart`
+
+If you are an agent helping a user configure this channel:
+
+1. Read the user's `~/.openclaw/openclaw.json` to understand the current config structure
+2. Add or update the `channels.agentevo` section with the user's `apiKey` and `wsUrl`
+3. Ensure `plugins.entries.agentevo.enabled` is `true`
+4. Write the updated config back
+5. Remind the user to run `openclaw gateway restart` to apply changes
 
 ## Operational Rules
 

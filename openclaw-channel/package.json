@@ -6,10 +6,7 @@
   "dependencies": {
     "ws": "^8.20.0"
   },
-  "devDependencies": {
-    "@openclaw/plugin-sdk": "workspace:*",
-    "openclaw": "workspace:*"
-  },
+  "devDependencies": {},
   "peerDependencies": {
     "openclaw": ">=2026.4.10"
   },
