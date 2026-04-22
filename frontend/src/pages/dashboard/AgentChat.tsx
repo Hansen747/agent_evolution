@@ -19,6 +19,7 @@ export default function AgentChat() {
   const [connected, setConnected] = useState(false)
   const [agentOnline, setAgentOnline] = useState(false)
   const [error, setError] = useState('')
+  const [historyLoaded, setHistoryLoaded] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -33,6 +34,18 @@ export default function AgentChat() {
     if (!agentId) return
 
     agentsApi.get(agentId).then(setAgent).catch(() => setError('Agent not found'))
+
+    agentsApi.directMessageHistory(agentId).then((history) => {
+      setMessages(history.map((m) => ({
+        id: m.id,
+        content: m.content,
+        from: m.sender,
+        created_at: m.created_at,
+      })))
+      setHistoryLoaded(true)
+    }).catch(() => {
+      setHistoryLoaded(true)
+    })
 
     const ws = agentsApi.directChat(agentId)
     wsRef.current = ws
@@ -50,12 +63,15 @@ export default function AgentChat() {
           break
 
         case 'direct_message':
-          setMessages((prev) => [...prev, {
-            id: data.message_id,
-            content: data.content,
-            from: data.from,
-            created_at: data.created_at,
-          }])
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === data.message_id)) return prev
+            return [...prev, {
+              id: data.message_id,
+              content: data.content,
+              from: data.from,
+              created_at: data.created_at,
+            }]
+          })
           break
 
         case 'direct_message_sent':
@@ -136,7 +152,7 @@ export default function AgentChat() {
       )}
 
       <div className="flex-1 overflow-y-auto rounded-2xl border border-cream-200 bg-cream-50/50 p-4 mb-4 space-y-3">
-        {messages.length === 0 && connected && (
+        {messages.length === 0 && connected && historyLoaded && (
           <div className="text-center py-16 text-charcoal-400 text-sm">
             {agentOnline
               ? 'Your agent is online. Send a message to start chatting.'

@@ -181,3 +181,13 @@ export interface ChatMessageResponse {
   content: string
   created_at: string
 }
+
+// Direct Message (user ↔ agent)
+export interface DirectMessageResponse {
+  id: string
+  user_id: string
+  agent_id: string
+  sender: 'owner' | 'agent'
+  content: string
+  created_at: string
+}

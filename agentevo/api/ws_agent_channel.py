@@ -60,7 +60,7 @@ import jwt
 
 from agentevo.core.database import SessionLocal
 from agentevo.core.config import settings
-from agentevo.models.models import Agent, ExpertAgent, ChatSession, ChatMessage, SubagentAsset
+from agentevo.models.models import Agent, ExpertAgent, ChatSession, ChatMessage, SubagentAsset, DirectMessage
 
 logger = logging.getLogger(__name__)
 
@@ -461,16 +461,23 @@ async def _handle_direct_message_from_agent(
         await websocket.send_json({"type": "error", "detail": "Agent is not bound to any user"})
         return
 
-    msg_id = uuid.uuid4().hex
-    now = datetime.now(timezone.utc).isoformat()
+    dm = DirectMessage(
+        user_id=agent.owner_id,
+        agent_id=agent.id,
+        sender="agent",
+        content=content,
+    )
+    db.add(dm)
+    db.commit()
+    db.refresh(dm)
 
     outgoing = {
         "type": "direct_message",
         "agent_id": agent.id,
         "content": content,
         "from": "agent",
-        "message_id": msg_id,
-        "created_at": now,
+        "message_id": dm.id,
+        "created_at": dm.created_at.isoformat(),
     }
 
     await user_agent_manager.send(agent.owner_id, agent.id, outgoing)
@@ -725,22 +732,29 @@ async def user_agent_chat(websocket: WebSocket, agent_id: str, token: str = ""):
                         await websocket.send_json({"type": "error", "detail": "Agent is offline"})
                         continue
 
-                    msg_id = uuid.uuid4().hex
-                    now = datetime.now(timezone.utc).isoformat()
+                    dm = DirectMessage(
+                        user_id=user_id,
+                        agent_id=agent_id,
+                        sender="owner",
+                        content=content,
+                    )
+                    db.add(dm)
+                    db.commit()
+                    db.refresh(dm)
 
                     await agent_manager.send(agent_id, {
                         "type": "direct_message",
                         "agent_id": agent_id,
                         "content": content,
                         "from": "owner",
-                        "message_id": msg_id,
-                        "created_at": now,
+                        "message_id": dm.id,
+                        "created_at": dm.created_at.isoformat(),
                     })
 
                     await websocket.send_json({
                         "type": "direct_message_sent",
-                        "message_id": msg_id,
-                        "created_at": now,
+                        "message_id": dm.id,
+                        "created_at": dm.created_at.isoformat(),
                     })
 
                 elif msg_type == "ping":

@@ -10,13 +10,14 @@ from sqlalchemy.orm import Session
 
 from agentevo.core.database import get_db
 from agentevo.core.security import get_current_agent, get_current_user_id, get_optional_agent, get_optional_user_id
-from agentevo.models.models import Agent, AgentBindingKey, OperationLog
+from agentevo.models.models import Agent, AgentBindingKey, OperationLog, DirectMessage
 from agentevo.api.schemas import (
     AgentRegisterRequest, AgentResponse, AgentHeartbeatRequest,
     AgentCredentialLinkRequest, AgentBindingKeyCreateRequest,
     AgentBindingKeyResponse, AgentBindingKeyCreateResponse,
     AgentBindWithKeyRequest,
     OperationLogCreateRequest, OperationLogResponse,
+    DirectMessageResponse,
     PaginatedResponse, MessageResponse,
 )
 
@@ -36,6 +37,34 @@ def get_agents_online_status(
         agent.id: agent_manager.is_online(agent.id)
         for agent in my_agents
     }
+
+
+@router.get("/{agent_id}/direct-messages", response_model=list[DirectMessageResponse])
+def list_direct_messages(
+    agent_id: str,
+    before: Optional[str] = Query(None, description="Return messages before this ID"),
+    limit: int = Query(50, ge=1, le=200),
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """Fetch direct message history between the current user and their agent."""
+    agent = db.query(Agent).filter(Agent.id == agent_id, Agent.owner_id == user_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found or not yours")
+
+    query = db.query(DirectMessage).filter(
+        DirectMessage.user_id == user_id,
+        DirectMessage.agent_id == agent_id,
+    )
+
+    if before:
+        ref = db.query(DirectMessage).filter(DirectMessage.id == before).first()
+        if ref:
+            query = query.filter(DirectMessage.created_at < ref.created_at)
+
+    messages = query.order_by(DirectMessage.created_at.desc()).limit(limit).all()
+    messages.reverse()
+    return messages
 
 
 # ---- Agent CRUD -----------------------------------------------------------

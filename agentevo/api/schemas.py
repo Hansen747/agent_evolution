@@ -371,6 +371,18 @@ class ChatMessageResponse(BaseModel):
         from_attributes = True
 
 
+class DirectMessageResponse(BaseModel):
+    id: str
+    user_id: str
+    agent_id: str
+    sender: str
+    content: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # ---------------------------------------------------------------------------
 # Generic
 # ---------------------------------------------------------------------------

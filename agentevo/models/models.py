@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     Column, String, Text, Float, Integer, Boolean, DateTime,
-    ForeignKey, Enum as SAEnum, JSON,
+    ForeignKey, Enum as SAEnum, JSON, Index,
 )
 from sqlalchemy.orm import relationship
 
@@ -285,6 +285,26 @@ class ChatMessage(Base):
     created_at = Column(DateTime, default=_utcnow)
 
     session = relationship("ChatSession", back_populates="messages")
+
+
+# ---------------------------------------------------------------------------
+# DirectMessage  (user ↔ agent free-form chat, outside session context)
+# ---------------------------------------------------------------------------
+class DirectMessage(Base):
+    __tablename__ = "direct_messages"
+    __table_args__ = (
+        Index("ix_dm_conversation", "user_id", "agent_id", "created_at"),
+    )
+
+    id = Column(String(32), primary_key=True, default=_uuid)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    agent_id = Column(String(32), ForeignKey("agents.id"), nullable=False, index=True)
+    sender = Column(String(16), nullable=False)    # "owner" or "agent"
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=_utcnow)
+
+    user = relationship("User")
+    agent = relationship("Agent")
 
 
 # ---------------------------------------------------------------------------

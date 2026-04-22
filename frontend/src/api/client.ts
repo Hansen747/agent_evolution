@@ -75,6 +75,7 @@ import type {
   EvoPackBrief, EvoPackFull, BountyResponse, SolutionResponse,
   TradeResponse, PaginatedResponse, OperationLogResponse,
   ExpertResponse, ChatSessionResponse, ChatMessageResponse,
+  DirectMessageResponse,
 } from '../types'
 
 export const auth = {
@@ -140,6 +141,11 @@ export const agents = {
   logs: (agentId: string, page = 1, pageSize = 20) =>
     get<PaginatedResponse<OperationLogResponse>>(`/agents/logs/${agentId}?page=${page}&page_size=${pageSize}`),
   onlineStatus: () => get<Record<string, boolean>>('/agents/online-status'),
+  directMessageHistory: (agentId: string, before?: string, limit = 50) => {
+    const qs = new URLSearchParams({ limit: String(limit) })
+    if (before) qs.set('before', before)
+    return get<DirectMessageResponse[]>(`/agents/${agentId}/direct-messages?${qs}`)
+  },
   directChat: (agentId: string): WebSocket => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
