@@ -30,7 +30,6 @@ async function dispatchToAgent(
   content: string,
   senderId: string,
   messageId: string,
-  extraContext?: Record<string, unknown>,
 ): Promise<void> {
   if (!ctx.channelRuntime) {
     ctx.log?.error?.("[agentevo] channelRuntime not available — cannot dispatch to agent");
@@ -38,43 +37,51 @@ async function dispatchToAgent(
   }
 
   const send = getActiveSend();
+  const isDirectMessage = sessionKey.startsWith("agentevo:direct:");
 
-  await dispatchInboundDirectDmWithRuntime({
-    cfg: ctx.cfg,
-    runtime: { channel: ctx.channelRuntime },
-    channel: "agentevo",
-    channelLabel: "AgentEvolution",
-    accountId: ctx.accountId,
-    peer: { kind: "direct", id: senderId },
-    senderId,
-    senderAddress: senderId,
-    recipientAddress: "agentevo",
-    conversationLabel: senderId,
-    rawBody: content,
-    messageId,
-    deliver: async (payload) => {
-      if (!send) {
-        ctx.log?.error?.("[agentevo] no active WebSocket connection for delivery");
-        return;
-      }
-      const target = payload.to?.trim() ?? "";
-      if (target.startsWith("agentevo:direct:")) {
-        send({ type: "direct_message", content: payload.text ?? "" });
-      } else {
-        const sid = target.replace(/^agentevo:session:/, "");
-        if (sid) {
-          send({ type: "message", session_id: sid, content: payload.text ?? "" });
+  try {
+    await dispatchInboundDirectDmWithRuntime({
+      cfg: ctx.cfg,
+      runtime: { channel: ctx.channelRuntime },
+      channel: "agentevo",
+      channelLabel: "AgentEvolution",
+      accountId: ctx.accountId,
+      peer: { kind: "direct", id: sessionKey },
+      senderId,
+      senderAddress: senderId,
+      recipientAddress: "agentevo",
+      conversationLabel: senderId,
+      rawBody: content,
+      messageId,
+      deliver: async (payload) => {
+        const text = payload.text ?? "";
+        if (!text) return;
+
+        const currentSend = send ?? getActiveSend();
+        if (!currentSend) {
+          ctx.log?.error?.("[agentevo] no active WebSocket connection for delivery");
+          return;
         }
-      }
-    },
-    onRecordError: (err) => {
-      ctx.log?.error?.(`[agentevo] record error: ${err}`);
-    },
-    onDispatchError: (err, info) => {
-      ctx.log?.error?.(`[agentevo] dispatch error (${info.kind}): ${err}`);
-    },
-    ...extraContext,
-  });
+
+        ctx.log?.info?.(`[agentevo] delivering reply (${text.length} chars, direct=${isDirectMessage})`);
+
+        if (isDirectMessage) {
+          currentSend({ type: "direct_message", content: text });
+        } else {
+          const sid = sessionKey.replace(/^agentevo:session:/, "");
+          currentSend({ type: "message", session_id: sid, content: text });
+        }
+      },
+      onRecordError: (err) => {
+        ctx.log?.error?.(`[agentevo] record error: ${err}`);
+      },
+      onDispatchError: (err, info) => {
+        ctx.log?.error?.(`[agentevo] dispatch error (${info.kind}): ${err}`);
+      },
+    });
+  } catch (err) {
+    ctx.log?.error?.(`[agentevo] dispatchToAgent failed: ${err}`);
+  }
 }
 
 export async function handleInboundNewSession(
@@ -105,9 +112,6 @@ export async function handleInboundNewSession(
     content,
     msg.student.name,
     `new_session_${msg.session_id}`,
-    {
-      SessionKey: `agentevo:session:${msg.session_id}`,
-    },
   );
 }
 
@@ -135,9 +139,6 @@ export async function handleInboundSessionCreated(
     systemContext,
     "system",
     `session_created_${msg.session_id}`,
-    {
-      SessionKey: `agentevo:session:${msg.session_id}`,
-    },
   );
 }
 
@@ -155,9 +156,6 @@ export async function handleInboundMessage(
     msg.content,
     msg.sender_role,
     msg.message_id,
-    {
-      SessionKey: `agentevo:session:${msg.session_id}`,
-    },
   );
 }
 
@@ -175,9 +173,6 @@ export async function handleInboundGuidance(
     `[Guidance from your owner]: ${msg.content}`,
     "guidance",
     msg.message_id,
-    {
-      SessionKey: `agentevo:session:${msg.session_id}`,
-    },
   );
 }
 
@@ -193,9 +188,6 @@ export async function handleInboundDirectMessage(
     msg.content,
     "owner",
     msg.message_id,
-    {
-      SessionKey: `agentevo:direct:${msg.agent_id}`,
-    },
   );
 }
 
@@ -213,8 +205,5 @@ export async function handleInboundEvoPackShared(
     `The expert has shared a teaching EvoPack: "${msg.asset_name}" (asset_id: ${msg.asset_id}). You can download it from the platform.`,
     "system",
     `evopack_${msg.asset_id}`,
-    {
-      SessionKey: `agentevo:session:${msg.session_id}`,
-    },
   );
 }
