@@ -46,6 +46,7 @@ export default function AgentChat() {
         case 'connected':
           setConnected(true)
           setAgentOnline(data.agent_online)
+          setError('')
           break
 
         case 'direct_message':
