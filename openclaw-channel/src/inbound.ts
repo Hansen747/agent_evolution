@@ -1,9 +1,11 @@
 /**
  * Inbound message handlers: routes platform WebSocket events into OpenClaw's
- * agent execution pipeline with rich context about role and learning objective.
+ * agent execution pipeline via the SDK's dispatchInboundDirectDmWithRuntime.
  */
 
+import { dispatchInboundDirectDmWithRuntime } from "openclaw/plugin-sdk/channel-inbound";
 import type { PlatformInboundMessage } from "./types.js";
+import { getActiveSend } from "./monitor.js";
 
 type NewSessionMsg = Extract<PlatformInboundMessage, { type: "new_session" }>;
 type SessionCreatedMsg = Extract<PlatformInboundMessage, { type: "session_created" }>;
@@ -13,18 +15,66 @@ type EvoPackSharedMsg = Extract<PlatformInboundMessage, { type: "evopack_shared"
 type DirectMsg = Extract<PlatformInboundMessage, { type: "direct_message" }>;
 
 interface GatewayContext {
+  cfg: any;
+  accountId: string;
+  channelRuntime?: any;
   log?: {
     info(msg: string): void;
     error?(msg: string): void;
   };
-  dispatch?: (params: {
-    channelId: string;
-    accountId: string;
-    sessionKey: string;
-    content: string;
-    sender: string;
-    metadata?: Record<string, unknown>;
-  }) => Promise<void>;
+}
+
+async function dispatchToAgent(
+  ctx: GatewayContext,
+  sessionKey: string,
+  content: string,
+  senderId: string,
+  messageId: string,
+  extraContext?: Record<string, unknown>,
+): Promise<void> {
+  if (!ctx.channelRuntime) {
+    ctx.log?.error?.("[agentevo] channelRuntime not available — cannot dispatch to agent");
+    return;
+  }
+
+  const send = getActiveSend();
+
+  await dispatchInboundDirectDmWithRuntime({
+    cfg: ctx.cfg,
+    runtime: { channel: ctx.channelRuntime },
+    channel: "agentevo",
+    channelLabel: "AgentEvolution",
+    accountId: ctx.accountId,
+    peer: { kind: "direct", id: senderId },
+    senderId,
+    senderAddress: senderId,
+    recipientAddress: "agentevo",
+    conversationLabel: senderId,
+    rawBody: content,
+    messageId,
+    deliver: async (payload) => {
+      if (!send) {
+        ctx.log?.error?.("[agentevo] no active WebSocket connection for delivery");
+        return;
+      }
+      const target = payload.to?.trim() ?? "";
+      if (target.startsWith("agentevo:direct:")) {
+        send({ type: "direct_message", content: payload.text ?? "" });
+      } else {
+        const sid = target.replace(/^agentevo:session:/, "");
+        if (sid) {
+          send({ type: "message", session_id: sid, content: payload.text ?? "" });
+        }
+      }
+    },
+    onRecordError: (err) => {
+      ctx.log?.error?.(`[agentevo] record error: ${err}`);
+    },
+    onDispatchError: (err, info) => {
+      ctx.log?.error?.(`[agentevo] dispatch error (${info.kind}): ${err}`);
+    },
+    ...extraContext,
+  });
 }
 
 export async function handleInboundNewSession(
@@ -49,21 +99,16 @@ export async function handleInboundNewSession(
     ? `${systemContext}\n\n---\nStudent's first message:\n${msg.message}`
     : systemContext;
 
-  await ctx.dispatch?.({
-    channelId: "agentevo",
-    accountId: "default",
-    sessionKey: `agentevo:session:${msg.session_id}`,
+  await dispatchToAgent(
+    ctx,
+    `agentevo:session:${msg.session_id}`,
     content,
-    sender: msg.student.name,
-    metadata: {
-      sessionId: msg.session_id,
-      role: "expert",
-      topic: msg.topic,
-      learningObjective: msg.learning_objective,
-      student: msg.student,
-      isNewSession: true,
+    msg.student.name,
+    `new_session_${msg.session_id}`,
+    {
+      SessionKey: `agentevo:session:${msg.session_id}`,
     },
-  });
+  );
 }
 
 export async function handleInboundSessionCreated(
@@ -84,21 +129,16 @@ export async function handleInboundSessionCreated(
     `Ask questions actively and try to understand deeply. When you receive an EvoPack at the end, acknowledge it.`,
   ].join("\n");
 
-  await ctx.dispatch?.({
-    channelId: "agentevo",
-    accountId: "default",
-    sessionKey: `agentevo:session:${msg.session_id}`,
-    content: systemContext,
-    sender: "system",
-    metadata: {
-      sessionId: msg.session_id,
-      role: "student",
-      topic: msg.topic,
-      learningObjective: msg.learning_objective,
-      expert: msg.expert,
-      isNewSession: true,
+  await dispatchToAgent(
+    ctx,
+    `agentevo:session:${msg.session_id}`,
+    systemContext,
+    "system",
+    `session_created_${msg.session_id}`,
+    {
+      SessionKey: `agentevo:session:${msg.session_id}`,
     },
-  });
+  );
 }
 
 export async function handleInboundMessage(
@@ -109,19 +149,16 @@ export async function handleInboundMessage(
     `[agentevo] message in session ${msg.session_id} from ${msg.sender_role}`,
   );
 
-  await ctx.dispatch?.({
-    channelId: "agentevo",
-    accountId: "default",
-    sessionKey: `agentevo:session:${msg.session_id}`,
-    content: msg.content,
-    sender: msg.sender_role,
-    metadata: {
-      sessionId: msg.session_id,
-      senderRole: msg.sender_role,
-      messageId: msg.message_id,
-      createdAt: msg.created_at,
+  await dispatchToAgent(
+    ctx,
+    `agentevo:session:${msg.session_id}`,
+    msg.content,
+    msg.sender_role,
+    msg.message_id,
+    {
+      SessionKey: `agentevo:session:${msg.session_id}`,
     },
-  });
+  );
 }
 
 export async function handleInboundGuidance(
@@ -132,43 +169,34 @@ export async function handleInboundGuidance(
     `[agentevo] guidance received for session ${msg.session_id}`,
   );
 
-  await ctx.dispatch?.({
-    channelId: "agentevo",
-    accountId: "default",
-    sessionKey: `agentevo:session:${msg.session_id}`,
-    content: `[Guidance from your owner]: ${msg.content}`,
-    sender: "guidance",
-    metadata: {
-      sessionId: msg.session_id,
-      senderRole: "guidance",
-      messageId: msg.message_id,
-      createdAt: msg.created_at,
-      isGuidance: true,
+  await dispatchToAgent(
+    ctx,
+    `agentevo:session:${msg.session_id}`,
+    `[Guidance from your owner]: ${msg.content}`,
+    "guidance",
+    msg.message_id,
+    {
+      SessionKey: `agentevo:session:${msg.session_id}`,
     },
-  });
+  );
 }
 
 export async function handleInboundDirectMessage(
   msg: DirectMsg,
   ctx: GatewayContext,
 ): Promise<void> {
-  ctx.log?.info(
-    `[agentevo] direct message from owner`,
-  );
+  ctx.log?.info(`[agentevo] direct message from owner`);
 
-  await ctx.dispatch?.({
-    channelId: "agentevo",
-    accountId: "default",
-    sessionKey: `agentevo:direct:${msg.agent_id}`,
-    content: msg.content,
-    sender: "owner",
-    metadata: {
-      agentId: msg.agent_id,
-      messageId: msg.message_id,
-      createdAt: msg.created_at,
-      isDirectMessage: true,
+  await dispatchToAgent(
+    ctx,
+    `agentevo:direct:${msg.agent_id}`,
+    msg.content,
+    "owner",
+    msg.message_id,
+    {
+      SessionKey: `agentevo:direct:${msg.agent_id}`,
     },
-  });
+  );
 }
 
 export async function handleInboundEvoPackShared(
@@ -179,17 +207,14 @@ export async function handleInboundEvoPackShared(
     `[agentevo] EvoPack "${msg.asset_name}" shared in session ${msg.session_id}`,
   );
 
-  await ctx.dispatch?.({
-    channelId: "agentevo",
-    accountId: "default",
-    sessionKey: `agentevo:session:${msg.session_id}`,
-    content: `The expert has shared a teaching EvoPack: "${msg.asset_name}" (asset_id: ${msg.asset_id}). You can download it from the platform.`,
-    sender: "system",
-    metadata: {
-      sessionId: msg.session_id,
-      assetId: msg.asset_id,
-      assetName: msg.asset_name,
-      isEvoPackShared: true,
+  await dispatchToAgent(
+    ctx,
+    `agentevo:session:${msg.session_id}`,
+    `The expert has shared a teaching EvoPack: "${msg.asset_name}" (asset_id: ${msg.asset_id}). You can download it from the platform.`,
+    "system",
+    `evopack_${msg.asset_id}`,
+    {
+      SessionKey: `agentevo:session:${msg.session_id}`,
     },
-  });
+  );
 }
