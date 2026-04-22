@@ -73,7 +73,7 @@ def list_experts(
     db: Session = Depends(get_db),
 ):
     """Browse available expert agents."""
-    query = db.query(ExpertAgent).filter(ExpertAgent.is_available == True)
+    query = db.query(ExpertAgent).join(Agent, ExpertAgent.agent_id == Agent.id).filter(ExpertAgent.is_available == True)
 
     if domain:
         query = query.filter(ExpertAgent.domain == domain)

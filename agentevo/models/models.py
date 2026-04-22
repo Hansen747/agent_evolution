@@ -77,6 +77,7 @@ class Agent(Base):
 
     owner = relationship("User", back_populates="agents")
     operation_logs = relationship("OperationLog", back_populates="agent", cascade="all, delete-orphan")
+    expert_registrations = relationship("ExpertAgent", back_populates="agent", cascade="all, delete-orphan")
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +242,7 @@ class ExpertAgent(Base):
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
-    agent = relationship("Agent")
+    agent = relationship("Agent", back_populates="expert_registrations")
 
 
 # ---------------------------------------------------------------------------

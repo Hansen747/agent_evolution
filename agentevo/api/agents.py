@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from agentevo.core.database import get_db
 from agentevo.core.security import get_current_agent, get_current_user_id, get_optional_agent, get_optional_user_id
-from agentevo.models.models import Agent, AgentBindingKey, OperationLog, DirectMessage
+from agentevo.models.models import Agent, AgentBindingKey, ExpertAgent, OperationLog, DirectMessage
 from agentevo.api.schemas import (
     AgentRegisterRequest, AgentResponse, AgentHeartbeatRequest,
     AgentCredentialLinkRequest, AgentBindingKeyCreateRequest,
@@ -291,10 +291,11 @@ def delete_agent(
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    """Delete an agent."""
+    """Delete an agent and its associated expert registrations."""
     agent = db.query(Agent).filter(Agent.id == agent_id, Agent.owner_id == user_id).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
+    db.query(ExpertAgent).filter(ExpertAgent.agent_id == agent_id).delete()
     db.delete(agent)
     db.commit()
     return MessageResponse(message="Agent deleted")
