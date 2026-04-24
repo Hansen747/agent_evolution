@@ -343,15 +343,25 @@ def get_session(
 
 
 @router.post("/chat/sessions/{session_id}/close", response_model=MessageResponse)
-def close_session(
+async def close_session(
     session_id: str,
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
     """Close a chat session."""
+    from agentevo.api.ws_agent_channel import agent_manager, _broadcast_to_observers, _get_student_agent_id, _get_expert_agent_id
+
     session = _get_session_with_auth(session_id, user_id, db)
     session.status = "closed"
     db.commit()
+
+    closed_msg = {"type": "session_closed", "session_id": session.id}
+    await agent_manager.send(_get_student_agent_id(session), closed_msg)
+    expert_id = _get_expert_agent_id(session, db)
+    if expert_id:
+        await agent_manager.send(expert_id, closed_msg)
+    await _broadcast_to_observers(session.id, closed_msg)
+
     return MessageResponse(message="Session closed")
 
 

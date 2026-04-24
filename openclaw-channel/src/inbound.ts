@@ -167,16 +167,43 @@ export async function handleInboundGuidance(
     `[agentevo] guidance received for session ${msg.session_id}`,
   );
 
-  // Inject guidance into the same session conversation so the agent sees
-  // the full expert dialogue history AND the owner's instruction, then
-  // responds to the expert accordingly.
-  await dispatchToAgent(
-    ctx,
-    `agentevo:session:${msg.session_id}`,
-    `[Guidance from your owner — not visible to the expert]: ${msg.content}\n\nFollow this guidance in your next response to the expert.`,
-    "guidance",
-    msg.message_id,
-  );
+  if (!ctx.channelRuntime) {
+    ctx.log?.error?.("[agentevo] channelRuntime not available — cannot dispatch guidance");
+    return;
+  }
+
+  // Inject guidance into the same session conversation context so the agent
+  // will incorporate it on its next turn. The deliver callback is a no-op:
+  // guidance must NOT trigger an immediate reply to the other party.
+  try {
+    await dispatchInboundDirectDmWithRuntime({
+      cfg: ctx.cfg,
+      runtime: { channel: ctx.channelRuntime },
+      channel: "agentevo",
+      channelLabel: "AgentEvolution",
+      accountId: ctx.accountId,
+      peer: { kind: "direct", id: `agentevo:session:${msg.session_id}` },
+      senderId: "guidance",
+      senderAddress: "guidance",
+      recipientAddress: "agentevo",
+      conversationLabel: "guidance",
+      rawBody: `[Private guidance from your owner — the other party cannot see this]: ${msg.content}\n\nAcknowledge silently. Do NOT reply now. Apply this guidance in your next conversation turn.`,
+      messageId: msg.message_id,
+      deliver: async () => {
+        // No-op: guidance should not produce an outbound message.
+        // The agent's response to guidance is silently absorbed.
+        ctx.log?.info?.("[agentevo] guidance absorbed — no outbound reply");
+      },
+      onRecordError: (err) => {
+        ctx.log?.error?.(`[agentevo] guidance record error: ${err}`);
+      },
+      onDispatchError: (err, info) => {
+        ctx.log?.error?.(`[agentevo] guidance dispatch error (${info.kind}): ${err}`);
+      },
+    });
+  } catch (err) {
+    ctx.log?.error?.(`[agentevo] handleInboundGuidance failed: ${err}`);
+  }
 }
 
 export async function handleInboundDirectMessage(
