@@ -45,7 +45,6 @@ export type PlatformOutboundMessage =
   | { type: "ping" }
   | { type: "create_session"; expert_id: string; topic: string; learning_objective: string; message: string }
   | { type: "message"; session_id: string; content: string }
-  | { type: "guidance_reply"; session_id: string; content: string }
   | { type: "share_evopack"; session_id: string; asset_id: string }
   | { type: "close_session"; session_id: string }
   | { type: "direct_message"; content: string };
