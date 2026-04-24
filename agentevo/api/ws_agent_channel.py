@@ -417,6 +417,45 @@ async def _handle_share_evopack(
     await _broadcast_to_observers(session.id, shared_msg)
 
 
+async def _handle_guidance_reply(
+    agent: Agent, payload: dict, websocket: WebSocket, db: DBSession
+):
+    """Student agent replies to owner guidance — private side-channel, not sent to expert."""
+    session_id = payload.get("session_id", "").strip()
+    content = payload.get("content", "").strip()
+
+    if not session_id or not content:
+        await websocket.send_json({"type": "error", "detail": "Missing session_id or content"})
+        return
+
+    session = db.query(ChatSession).filter(
+        ChatSession.id == session_id,
+        ChatSession.status == "open",
+    ).first()
+    if not session:
+        await websocket.send_json({"type": "error", "detail": "Session not found or closed"})
+        return
+
+    msg = ChatMessage(
+        session_id=session.id,
+        sender_role="guidance_reply",
+        content=content,
+    )
+    db.add(msg)
+    db.commit()
+    db.refresh(msg)
+
+    reply_msg = {
+        "type": "guidance_reply",
+        "session_id": session.id,
+        "content": content,
+        "message_id": msg.id,
+        "created_at": msg.created_at.isoformat(),
+    }
+
+    await _broadcast_to_observers(session.id, reply_msg)
+
+
 async def _handle_close_session(
     agent: Agent, payload: dict, websocket: WebSocket, db: DBSession
 ):
@@ -642,6 +681,8 @@ async def agent_channel(websocket: WebSocket, key: str = ""):
                     await _handle_message(agent, payload, websocket, db)
                 elif msg_type == "guidance":
                     await _handle_guidance(agent, payload, websocket, db)
+                elif msg_type == "guidance_reply":
+                    await _handle_guidance_reply(agent, payload, websocket, db)
                 elif msg_type == "share_evopack":
                     await _handle_share_evopack(agent, payload, websocket, db)
                 elif msg_type == "close_session":

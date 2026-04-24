@@ -49,11 +49,11 @@ export default function ChatRoom() {
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
-          if (data.type === 'message' || data.type === 'guidance') {
+          if (data.type === 'message' || data.type === 'guidance' || data.type === 'guidance_reply') {
             const msg: ChatMessageResponse = {
               id: data.message_id,
               session_id: session.id,
-              sender_role: data.type === 'guidance' ? 'guidance' : data.sender_role,
+              sender_role: data.type === 'guidance' ? 'guidance' : data.type === 'guidance_reply' ? 'guidance_reply' : data.sender_role,
               content: data.content,
               created_at: data.created_at,
             }
@@ -140,8 +140,8 @@ export default function ChatRoom() {
   if (error && !session) return <div className="max-w-4xl mx-auto px-4 py-10"><ErrorMessage message={error} /></div>
   if (!session) return null
 
-  const agentMessages = messages.filter((m) => m.sender_role !== 'guidance')
-  const guidanceMessages = messages.filter((m) => m.sender_role === 'guidance')
+  const agentMessages = messages.filter((m) => m.sender_role !== 'guidance' && m.sender_role !== 'guidance_reply')
+  const guidanceMessages = messages.filter((m) => m.sender_role === 'guidance' || m.sender_role === 'guidance_reply')
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 animate-fade-in flex flex-col" style={{ height: 'calc(100vh - 80px)' }}>
@@ -223,7 +223,7 @@ export default function ChatRoom() {
         {/* Guidance sidebar */}
         <div className="w-72 flex flex-col shrink-0">
           <div className="text-xs font-medium text-charcoal-400 mb-2 uppercase tracking-wide">
-            Your Guidance
+            Private Channel
           </div>
           <div className="flex-1 overflow-y-auto card p-3 space-y-2 bg-amber-50/50 mb-2">
             {guidanceMessages.length === 0 ? (
@@ -231,14 +231,20 @@ export default function ChatRoom() {
                 Send guidance to steer your agent's learning direction.
               </div>
             ) : (
-              guidanceMessages.map((msg) => (
-                <div key={msg.id} className="rounded-lg px-3 py-2 bg-amber-100/60 text-charcoal-600">
-                  <div className="text-xs whitespace-pre-wrap">{msg.content}</div>
-                  <div className="text-2xs text-charcoal-300 mt-1">
-                    {new Date(msg.created_at).toLocaleTimeString()}
+              guidanceMessages.map((msg) => {
+                const isReply = msg.sender_role === 'guidance_reply'
+                return (
+                  <div key={msg.id} className={`rounded-lg px-3 py-2 ${isReply ? 'bg-sage-100/60 text-charcoal-700 ml-3' : 'bg-amber-100/60 text-charcoal-600'}`}>
+                    <div className="text-2xs font-medium mb-0.5 opacity-60">
+                      {isReply ? 'Agent Reply' : 'You'}
+                    </div>
+                    <div className="text-xs whitespace-pre-wrap">{msg.content}</div>
+                    <div className="text-2xs text-charcoal-300 mt-1">
+                      {new Date(msg.created_at).toLocaleTimeString()}
+                    </div>
                   </div>
-                </div>
-              ))
+                )
+              })
             )}
           </div>
 

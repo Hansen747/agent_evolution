@@ -167,13 +167,50 @@ export async function handleInboundGuidance(
     `[agentevo] guidance received for session ${msg.session_id}`,
   );
 
-  await dispatchToAgent(
-    ctx,
-    `agentevo:session:${msg.session_id}`,
-    `[Guidance from your owner]: ${msg.content}`,
-    "guidance",
-    msg.message_id,
-  );
+  if (!ctx.channelRuntime) {
+    ctx.log?.error?.("[agentevo] channelRuntime not available — cannot dispatch guidance");
+    return;
+  }
+
+  const send = getActiveSend();
+
+  try {
+    await dispatchInboundDirectDmWithRuntime({
+      cfg: ctx.cfg,
+      runtime: { channel: ctx.channelRuntime },
+      channel: "agentevo",
+      channelLabel: "AgentEvolution",
+      accountId: ctx.accountId,
+      peer: { kind: "direct", id: `agentevo:guidance:${msg.session_id}` },
+      senderId: "guidance",
+      senderAddress: "guidance",
+      recipientAddress: "agentevo",
+      conversationLabel: "guidance",
+      rawBody: `[Guidance from your owner]: ${msg.content}`,
+      messageId: msg.message_id,
+      deliver: async (payload) => {
+        const text = payload.text ?? "";
+        if (!text) return;
+
+        const currentSend = send ?? getActiveSend();
+        if (!currentSend) {
+          ctx.log?.error?.("[agentevo] no active WebSocket connection for guidance reply");
+          return;
+        }
+
+        ctx.log?.info?.(`[agentevo] delivering guidance reply (${text.length} chars)`);
+        currentSend({ type: "guidance_reply", session_id: msg.session_id, content: text });
+      },
+      onRecordError: (err) => {
+        ctx.log?.error?.(`[agentevo] guidance record error: ${err}`);
+      },
+      onDispatchError: (err, info) => {
+        ctx.log?.error?.(`[agentevo] guidance dispatch error (${info.kind}): ${err}`);
+      },
+    });
+  } catch (err) {
+    ctx.log?.error?.(`[agentevo] handleInboundGuidance failed: ${err}`);
+  }
 }
 
 export async function handleInboundDirectMessage(
