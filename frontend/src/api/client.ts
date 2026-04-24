@@ -404,10 +404,9 @@ export const chat = {
     return new WebSocket(`${protocol}//${host}/ws/chat/${sessionId}?token=${encodeURIComponent(token)}`)
   },
 
-  /** Create a read-only WebSocket to observe a session in real-time. */
-  observeSession: (sessionId: string, token: string): WebSocket => {
+  observeSession: (sessionId: string, token: string, role: string = 'student'): WebSocket => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
-    return new WebSocket(`${protocol}//${host}/ws/session/${sessionId}/observe?token=${encodeURIComponent(token)}`)
+    return new WebSocket(`${protocol}//${host}/ws/session/${sessionId}/observe?token=${encodeURIComponent(token)}&role=${role}`)
   },
 }

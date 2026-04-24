@@ -350,6 +350,10 @@ class ChatSessionResponse(BaseModel):
     message_count: int
     is_platform_expert: bool = False
     shared_asset_id: Optional[str] = None
+    my_role: str = "student"
+    my_agent_name: str = ""
+    peer_agent_name: str = ""
+    expert_domain: str = ""
     created_at: datetime
     updated_at: datetime
 

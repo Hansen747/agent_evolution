@@ -269,7 +269,8 @@ async def create_session(
         "message": None,
     })
 
-    return _session_to_response(session, expert)
+    user_agent_ids = _get_user_agent_ids(user_id, db)
+    return _session_to_response(session, expert, user_agent_ids, db)
 
 
 @router.get("/chat/sessions", response_model=PaginatedResponse)
@@ -323,7 +324,7 @@ def list_sessions(
     items = []
     for s in sessions:
         expert = db.query(ExpertAgent).filter(ExpertAgent.id == s.expert_id).first()
-        items.append(_session_to_response(s, expert))
+        items.append(_session_to_response(s, expert, user_agent_ids, db))
 
     return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
 
@@ -337,7 +338,8 @@ def get_session(
     """Get session details."""
     session = _get_session_with_auth(session_id, user_id, db)
     expert = db.query(ExpertAgent).filter(ExpertAgent.id == session.expert_id).first()
-    return _session_to_response(session, expert)
+    user_agent_ids = _get_user_agent_ids(user_id, db)
+    return _session_to_response(session, expert, user_agent_ids, db)
 
 
 @router.post("/chat/sessions/{session_id}/close", response_model=MessageResponse)
@@ -394,10 +396,19 @@ def list_messages(
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    """Get messages in a session. Use `after` param for incremental polling."""
+    """Get messages in a session. Filters out guidance messages meant for the other side."""
     session = _get_session_with_auth(session_id, user_id, db)
 
-    query = db.query(ChatMessage).filter(ChatMessage.session_id == session.id)
+    user_agent_ids = _get_user_agent_ids(user_id, db)
+    expert = db.query(ExpertAgent).filter(ExpertAgent.id == session.expert_id).first()
+    expert_agent_id = expert.agent_id if expert else None
+    my_role = "student" if session.requester_agent_id in user_agent_ids else "expert" if expert_agent_id in user_agent_ids else "student"
+    other_role = "expert" if my_role == "student" else "student"
+
+    query = db.query(ChatMessage).filter(
+        ChatMessage.session_id == session.id,
+        ChatMessage.sender_role != f"guidance:{other_role}",
+    )
 
     if after:
         ref_msg = db.query(ChatMessage).filter(ChatMessage.id == after).first()
@@ -447,7 +458,7 @@ def incoming_sessions(
     items = []
     for s in sessions:
         expert = db.query(ExpertAgent).filter(ExpertAgent.id == s.expert_id).first()
-        items.append(_session_to_response(s, expert))
+        items.append(_session_to_response(s, expert, user_agent_ids, db))
 
     return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
 
@@ -456,17 +467,17 @@ def incoming_sessions(
 # Helpers
 # =====================================================================
 
+def _get_user_agent_ids(user_id: str, db: Session) -> list[str]:
+    return [a.id for a in db.query(Agent).filter(Agent.owner_id == user_id).all()]
+
+
 def _get_session_with_auth(session_id: str, user_id: str, db: Session) -> ChatSession:
     """Fetch a session and verify the user has access (as student or expert owner)."""
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Check if user owns the requester agent
-    user_agent_ids = [
-        a.id for a in db.query(Agent).filter(Agent.owner_id == user_id).all()
-    ]
-    # Check if user owns the expert agent
+    user_agent_ids = _get_user_agent_ids(user_id, db)
     expert = db.query(ExpertAgent).filter(ExpertAgent.id == session.expert_id).first()
     expert_agent_id = expert.agent_id if expert else None
 
@@ -479,8 +490,27 @@ def _get_session_with_auth(session_id: str, user_id: str, db: Session) -> ChatSe
     return session
 
 
-def _session_to_response(session: ChatSession, expert: Optional[ExpertAgent]) -> ChatSessionResponse:
-    """Convert a ChatSession ORM object to a response with is_platform_expert flag."""
+def _session_to_response(
+    session: ChatSession,
+    expert: Optional[ExpertAgent],
+    user_agent_ids: list[str],
+    db: Session,
+) -> ChatSessionResponse:
+    expert_agent_id = expert.agent_id if expert else None
+    is_student = session.requester_agent_id in user_agent_ids
+    is_expert_owner = expert_agent_id in user_agent_ids
+    my_role = "student" if is_student else "expert" if is_expert_owner else "student"
+
+    requester_agent = db.query(Agent).filter(Agent.id == session.requester_agent_id).first()
+    expert_agent = db.query(Agent).filter(Agent.id == expert_agent_id).first() if expert_agent_id else None
+
+    if my_role == "student":
+        my_agent_name = requester_agent.name if requester_agent else ""
+        peer_agent_name = expert.name if expert else ""
+    else:
+        my_agent_name = expert.name if expert else ""
+        peer_agent_name = requester_agent.name if requester_agent else ""
+
     return ChatSessionResponse(
         id=session.id,
         requester_agent_id=session.requester_agent_id,
@@ -493,6 +523,10 @@ def _session_to_response(session: ChatSession, expert: Optional[ExpertAgent]) ->
         message_count=session.message_count,
         is_platform_expert=expert.is_platform if expert else False,
         shared_asset_id=session.shared_asset_id,
+        my_role=my_role,
+        my_agent_name=my_agent_name,
+        peer_agent_name=peer_agent_name,
+        expert_domain=expert.domain if expert else "",
         created_at=session.created_at,
         updated_at=session.updated_at,
     )

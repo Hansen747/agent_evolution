@@ -491,23 +491,25 @@ async def _handle_direct_message_from_agent(
 # ---------------------------------------------------------------------------
 
 class ObserverManager:
-    """Manages frontend WebSocket connections that observe session messages (read-only)."""
+    """Manages frontend WebSocket connections that observe session messages."""
 
     def __init__(self):
-        self.observers: Dict[str, list[WebSocket]] = {}
+        self.observers: Dict[str, list[tuple[WebSocket, str]]] = {}
 
-    async def subscribe(self, session_id: str, websocket: WebSocket):
+    async def subscribe(self, session_id: str, websocket: WebSocket, role: str = "student"):
         await websocket.accept()
-        self.observers.setdefault(session_id, []).append(websocket)
+        self.observers.setdefault(session_id, []).append((websocket, role))
 
     def unsubscribe(self, session_id: str, websocket: WebSocket):
         if session_id in self.observers:
             self.observers[session_id] = [
-                ws for ws in self.observers[session_id] if ws is not websocket
+                entry for entry in self.observers[session_id] if entry[0] is not websocket
             ]
 
-    async def broadcast(self, session_id: str, message: dict):
-        for ws in self.observers.get(session_id, []):
+    async def broadcast(self, session_id: str, message: dict, only_role: str | None = None):
+        for ws, role in self.observers.get(session_id, []):
+            if only_role and role != only_role:
+                continue
             try:
                 await ws.send_json(message)
             except Exception:
@@ -517,17 +519,18 @@ class ObserverManager:
 observer_manager = ObserverManager()
 
 
-async def _broadcast_to_observers(session_id: str, message: dict):
-    await observer_manager.broadcast(session_id, message)
+async def _broadcast_to_observers(session_id: str, message: dict, only_role: str | None = None):
+    await observer_manager.broadcast(session_id, message, only_role)
 
 
 @router.websocket("/ws/session/{session_id}/observe")
-async def observe_session(websocket: WebSocket, session_id: str, token: str = ""):
+async def observe_session(websocket: WebSocket, session_id: str, token: str = "", role: str = "student"):
     """
-    Read-only WebSocket for frontend users to observe a session in real-time.
+    WebSocket for frontend users to observe a session and send guidance.
 
     Query params:
-      - token: user JWT or session_token for auth
+      - token: session_token for auth
+      - role: "student" or "expert" — determines which agent receives guidance
     """
     db = SessionLocal()
     try:
@@ -536,17 +539,16 @@ async def observe_session(websocket: WebSocket, session_id: str, token: str = ""
             await websocket.close(code=4004, reason="Session not found")
             return
 
-        # Simple auth: accept if session_token matches
         if token != session.session_token:
             await websocket.close(code=4003, reason="Invalid token")
             return
 
-        await observer_manager.subscribe(session_id, websocket)
+        viewer_role = role if role in ("student", "expert") else "student"
+        await observer_manager.subscribe(session_id, websocket, viewer_role)
 
         try:
             while True:
                 data = await websocket.receive_text()
-                # Observers can send guidance messages
                 try:
                     payload = json.loads(data)
                     if payload.get("type") == "guidance":
@@ -554,7 +556,7 @@ async def observe_session(websocket: WebSocket, session_id: str, token: str = ""
                         if content and session.status == "open":
                             msg = ChatMessage(
                                 session_id=session.id,
-                                sender_role="guidance",
+                                sender_role=f"guidance:{viewer_role}",
                                 content=content,
                             )
                             db.add(msg)
@@ -569,9 +571,14 @@ async def observe_session(websocket: WebSocket, session_id: str, token: str = ""
                                 "created_at": msg.created_at.isoformat(),
                             }
 
-                            student_id = _get_student_agent_id(session)
-                            await agent_manager.send(student_id, guidance_msg)
-                            await _broadcast_to_observers(session.id, guidance_msg)
+                            if viewer_role == "student":
+                                target_id = _get_student_agent_id(session)
+                            else:
+                                target_id = _get_expert_agent_id(session, db)
+                            if target_id:
+                                await agent_manager.send(target_id, guidance_msg)
+
+                            await _broadcast_to_observers(session.id, guidance_msg, only_role=viewer_role)
                 except json.JSONDecodeError:
                     pass
         except WebSocketDisconnect:

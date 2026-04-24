@@ -169,6 +169,10 @@ export interface ChatSessionResponse {
   message_count: number
   is_platform_expert: boolean
   shared_asset_id: string | null
+  my_role: 'student' | 'expert'
+  my_agent_name: string
+  peer_agent_name: string
+  expert_domain: string
   created_at: string
   updated_at: string
 }
