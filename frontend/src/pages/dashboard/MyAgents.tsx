@@ -89,6 +89,21 @@ export default function MyAgents() {
   const [expertEditorAgentId, setExpertEditorAgentId] = useState<string | null>(null)
   const [expertForm, setExpertForm] = useState<ExpertFormState | null>(null)
   const [expertSaving, setExpertSaving] = useState(false)
+  const [renamingAgentId, setRenamingAgentId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+
+  const handleRename = async (agentId: string) => {
+    const trimmed = renameValue.trim()
+    if (!trimmed) return
+    try {
+      await agentsApi.update(agentId, { name: trimmed })
+      setRenamingAgentId(null)
+      setRenameValue('')
+      fetchData()
+    } catch (e: unknown) {
+      setFormMsg(e instanceof Error ? e.message : 'Failed to rename agent')
+    }
+  }
 
   const fetchData = async () => {
     setLoading(true)
@@ -226,6 +241,15 @@ export default function MyAgents() {
   const handleSaveExpert = async (agent: AgentResponse) => {
     if (!expertForm) return
 
+    if (!expertForm.name.trim()) {
+      setFormMsg('Expert name is required.')
+      return
+    }
+    if (!expertForm.domain.trim()) {
+      setFormMsg('Domain is required.')
+      return
+    }
+
     setExpertSaving(true)
     setFormMsg('')
     try {
@@ -350,7 +374,25 @@ export default function MyAgents() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <h3 className="font-display text-lg text-charcoal-700">{agent.name}</h3>
+                      {renamingAgentId === agent.id ? (
+                        <span className="inline-flex items-center gap-1">
+                          <input
+                            value={renameValue}
+                            onChange={(e) => setRenameValue(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') handleRename(agent.id); if (e.key === 'Escape') setRenamingAgentId(null) }}
+                            className="input py-0.5 px-1.5 text-lg w-48"
+                            autoFocus
+                          />
+                          <button onClick={() => handleRename(agent.id)} className="btn-primary text-xs py-0.5 px-2">OK</button>
+                          <button onClick={() => setRenamingAgentId(null)} className="btn-ghost text-xs py-0.5 px-2">Cancel</button>
+                        </span>
+                      ) : (
+                        <h3
+                          className="font-display text-lg text-charcoal-700 cursor-pointer hover:text-sage-600"
+                          title="Click to rename"
+                          onClick={() => { setRenamingAgentId(agent.id); setRenameValue(agent.name) }}
+                        >{agent.name}</h3>
+                      )}
                       <span className={`badge ${onlineStatus[agent.id] ? 'bg-green-100 text-green-700' : 'bg-charcoal-100 text-charcoal-500'}`}>
                         <span className={`inline-block w-2 h-2 rounded-full mr-1 ${onlineStatus[agent.id] ? 'bg-green-500' : 'bg-charcoal-400'}`} />
                         {onlineStatus[agent.id] ? 'Online' : 'Offline'}
@@ -438,7 +480,7 @@ export default function MyAgents() {
                   <div className="mt-5 border-t border-cream-200 pt-5">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                       <div>
-                        <label className="block text-sm font-medium text-charcoal-600 mb-1">Expert Name</label>
+                        <label className="block text-sm font-medium text-charcoal-600 mb-1">Expert Name <span className="text-rose-500">*</span></label>
                         <input
                           value={expertForm.name}
                           onChange={(e) => setExpertForm({ ...expertForm, name: e.target.value })}
@@ -448,7 +490,7 @@ export default function MyAgents() {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-charcoal-600 mb-1">Domain</label>
+                        <label className="block text-sm font-medium text-charcoal-600 mb-1">Domain <span className="text-rose-500">*</span></label>
                         <input
                           value={expertForm.domain}
                           onChange={(e) => setExpertForm({ ...expertForm, domain: e.target.value })}

@@ -85,7 +85,10 @@ class AgentConnectionManager:
                 pass
         self.connections[agent_id] = websocket
 
-    def disconnect(self, agent_id: str):
+    def disconnect(self, agent_id: str, websocket: "WebSocket | None" = None):
+        if websocket is not None:
+            if self.connections.get(agent_id) is not websocket:
+                return
         self.connections.pop(agent_id, None)
 
     async def send(self, agent_id: str, message: dict) -> bool:
@@ -653,10 +656,11 @@ async def agent_channel(websocket: WebSocket, key: str = ""):
 
     finally:
         if agent:
-            agent_manager.disconnect(agent.id)
-            agent.status = "offline"
-            db.commit()
-            logger.info(f"Agent disconnected: {agent.name} ({agent.id})")
+            agent_manager.disconnect(agent.id, websocket)
+            if not agent_manager.is_online(agent.id):
+                agent.status = "offline"
+                db.commit()
+                logger.info(f"Agent disconnected: {agent.name} ({agent.id})")
         db.close()
 
 

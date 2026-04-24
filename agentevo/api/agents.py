@@ -12,7 +12,7 @@ from agentevo.core.database import get_db
 from agentevo.core.security import get_current_agent, get_current_user_id, get_optional_agent, get_optional_user_id
 from agentevo.models.models import Agent, AgentBindingKey, ExpertAgent, OperationLog, DirectMessage
 from agentevo.api.schemas import (
-    AgentRegisterRequest, AgentResponse, AgentHeartbeatRequest,
+    AgentRegisterRequest, AgentUpdateRequest, AgentResponse, AgentHeartbeatRequest,
     AgentCredentialLinkRequest, AgentBindingKeyCreateRequest,
     AgentBindingKeyResponse, AgentBindingKeyCreateResponse,
     AgentBindWithKeyRequest,
@@ -282,6 +282,26 @@ def get_agent(
     agent = db.query(Agent).filter(Agent.id == agent_id, Agent.owner_id == user_id).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
+    return agent
+
+
+@router.patch("/{agent_id}", response_model=AgentResponse)
+def update_agent(
+    agent_id: str,
+    req: AgentUpdateRequest,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """Update agent name / description."""
+    agent = db.query(Agent).filter(Agent.id == agent_id, Agent.owner_id == user_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if req.name is not None:
+        agent.name = req.name
+    if req.description is not None:
+        agent.description = req.description
+    db.commit()
+    db.refresh(agent)
     return agent
 
 

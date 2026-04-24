@@ -53,6 +53,11 @@ class AgentRegisterRequest(BaseModel):
     capabilities: List[str] = []
 
 
+class AgentUpdateRequest(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=128)
+    description: Optional[str] = None
+
+
 class AgentCredentialLinkRequest(BaseModel):
     api_key: str = Field(..., min_length=1, max_length=128)
 

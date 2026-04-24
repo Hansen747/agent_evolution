@@ -91,6 +91,8 @@ export const auth = {
 export const agents = {
   list: () => get<AgentResponse[]>('/agents/'),
   get: (id: string) => get<AgentResponse>(`/agents/${id}`),
+  update: (id: string, data: { name?: string; description?: string }) =>
+    patch<AgentResponse>(`/agents/${id}`, data),
   selfRegister: (data: { name: string; description?: string; agent_type?: string; capabilities?: string[] }) =>
     post<AgentResponse>('/agents/self-register', data),
   register: (data: { name: string; description?: string; agent_type?: string; capabilities?: string[] }) =>

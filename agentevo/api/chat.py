@@ -199,12 +199,14 @@ def delete_expert(
 # =====================================================================
 
 @router.post("/chat/sessions", response_model=ChatSessionResponse, status_code=status.HTTP_201_CREATED)
-def create_session(
+async def create_session(
     req: ChatSessionCreateRequest,
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
     """Create a consultation session with an expert."""
+    from agentevo.api.ws_agent_channel import agent_manager
+
     # Verify the requesting agent belongs to the user
     agent = db.query(Agent).filter(
         Agent.id == req.agent_id, Agent.owner_id == user_id
@@ -237,6 +239,35 @@ def create_session(
     db.add(session)
     db.commit()
     db.refresh(session)
+
+    # Notify student agent via WebSocket
+    await agent_manager.send(agent.id, {
+        "type": "session_created",
+        "session_id": session.id,
+        "your_role": "student",
+        "expert_id": expert.id,
+        "topic": req.topic or "",
+        "learning_objective": req.learning_objective or "",
+        "expert": {
+            "name": expert.name,
+            "domain": expert.domain,
+            "description": expert.description,
+        },
+    })
+
+    # Notify expert agent via WebSocket
+    await agent_manager.send(expert.agent_id, {
+        "type": "new_session",
+        "session_id": session.id,
+        "your_role": "expert",
+        "topic": req.topic or "",
+        "learning_objective": req.learning_objective or "",
+        "student": {
+            "name": agent.name,
+            "description": agent.description or "",
+        },
+        "message": None,
+    })
 
     return _session_to_response(session, expert)
 
