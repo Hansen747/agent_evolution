@@ -6,5 +6,7 @@ export {
   handleInboundGuidance,
   handleInboundDirectMessage,
   handleInboundEvoPackShared,
+  handleInboundSessionClosed,
+  handleInboundGenerateEvoPack,
 } from "./inbound.js";
 export { sendAgentevoMessage } from "./outbound.js";

@@ -12,6 +12,8 @@ type SessionCreatedMsg = Extract<PlatformInboundMessage, { type: "session_create
 type ChatMsg = Extract<PlatformInboundMessage, { type: "message" }>;
 type GuidanceMsg = Extract<PlatformInboundMessage, { type: "guidance" }>;
 type EvoPackSharedMsg = Extract<PlatformInboundMessage, { type: "evopack_shared" }>;
+type SessionClosedMsg = Extract<PlatformInboundMessage, { type: "session_closed" }>;
+type GenerateEvoPackMsg = Extract<PlatformInboundMessage, { type: "generate_evopack" }>;
 type DirectMsg = Extract<PlatformInboundMessage, { type: "direct_message" }>;
 
 interface GatewayContext {
@@ -99,7 +101,8 @@ export async function handleInboundNewSession(
       ? `Learning objective: ${msg.learning_objective}`
       : `Topic: ${msg.topic}`,
     `Student: ${msg.student.name}${msg.student.description ? ` — ${msg.student.description}` : ""}`,
-    `Teach patiently and thoroughly. When the teaching is complete, summarize what was learned and generate an EvoPack with the key knowledge.`,
+    `Teach patiently and thoroughly. Stay focused on the topic.`,
+    `IMPORTANT: Do NOT exchange pleasantries or goodbye messages. When you have finished teaching, end your final message with the exact phrase "[TEACHING_COMPLETE]". The platform will handle session closure and EvoPack generation automatically.`,
   ].join("\n");
 
   const content = msg.message
@@ -130,7 +133,8 @@ export async function handleInboundSessionCreated(
       ? `Your learning objective: ${msg.learning_objective}`
       : `Topic: ${msg.topic}`,
     `Expert: ${msg.expert.name} (${msg.expert.domain})${msg.expert.description ? ` — ${msg.expert.description}` : ""}`,
-    `Ask questions actively and try to understand deeply. When you receive an EvoPack at the end, acknowledge it.`,
+    `Ask questions actively and try to understand deeply.`,
+    `IMPORTANT: Do NOT exchange pleasantries or goodbye messages. When you feel you have learned enough, end your final message with the exact phrase "[LEARNING_COMPLETE]". The platform will handle session closure automatically.`,
   ].join("\n");
 
   await dispatchToAgent(
@@ -236,4 +240,141 @@ export async function handleInboundEvoPackShared(
     "system",
     `evopack_${msg.asset_id}`,
   );
+}
+
+
+export async function handleInboundSessionClosed(
+  msg: SessionClosedMsg,
+  ctx: GatewayContext,
+): Promise<void> {
+  ctx.log?.info(`[agentevo] session ${msg.session_id} closed`);
+
+  if (!ctx.channelRuntime) return;
+
+  try {
+    await dispatchInboundDirectDmWithRuntime({
+      cfg: ctx.cfg,
+      runtime: { channel: ctx.channelRuntime },
+      channel: "agentevo",
+      channelLabel: "AgentEvolution",
+      accountId: ctx.accountId,
+      peer: { kind: "direct", id: `agentevo:session:${msg.session_id}` },
+      senderId: "system",
+      senderAddress: "system",
+      recipientAddress: "agentevo",
+      conversationLabel: "system",
+      rawBody: `[Session closed] This consultation session has ended. Do not send any more messages.`,
+      messageId: `session_closed_${msg.session_id}`,
+      deliver: async () => {},
+      onRecordError: (err) => {
+        ctx.log?.error?.(`[agentevo] session_closed record error: ${err}`);
+      },
+      onDispatchError: (err, info) => {
+        ctx.log?.error?.(`[agentevo] session_closed dispatch error (${info.kind}): ${err}`);
+      },
+    });
+  } catch (err) {
+    ctx.log?.error?.(`[agentevo] handleInboundSessionClosed failed: ${err}`);
+  }
+}
+
+
+export async function handleInboundGenerateEvoPack(
+  msg: GenerateEvoPackMsg,
+  ctx: GatewayContext,
+): Promise<void> {
+  ctx.log?.info(`[agentevo] generate_evopack request for session ${msg.session_id}`);
+
+  if (!ctx.channelRuntime) {
+    ctx.log?.error?.("[agentevo] channelRuntime not available — cannot generate EvoPack");
+    return;
+  }
+
+  const send = getActiveSend();
+
+  const prompt = [
+    `[Platform Request — Generate Teaching EvoPack]`,
+    `The teaching session on "${msg.topic}" has ended.`,
+    msg.learning_objective ? `Learning objective: ${msg.learning_objective}` : "",
+    ``,
+    `Please produce a structured teaching package by responding with EXACTLY this format:`,
+    ``,
+    `===EVOPACK_START===`,
+    `NAME: <concise name for this knowledge pack>`,
+    `DESCRIPTION: <2-3 sentence summary of what was taught>`,
+    `TAGS: <comma-separated topic tags>`,
+    `CONTENT:`,
+    `<The full teaching content in markdown — key concepts, examples, tips, and exercises from this session>`,
+    `===EVOPACK_END===`,
+    ``,
+    `Base this on what was discussed in the session. Be thorough but concise.`,
+  ].filter(Boolean).join("\n");
+
+  try {
+    await dispatchInboundDirectDmWithRuntime({
+      cfg: ctx.cfg,
+      runtime: { channel: ctx.channelRuntime },
+      channel: "agentevo",
+      channelLabel: "AgentEvolution",
+      accountId: ctx.accountId,
+      peer: { kind: "direct", id: `agentevo:session:${msg.session_id}` },
+      senderId: "platform",
+      senderAddress: "platform",
+      recipientAddress: "agentevo",
+      conversationLabel: "platform",
+      rawBody: prompt,
+      messageId: `generate_evopack_${msg.session_id}`,
+      deliver: async (payload) => {
+        const text = payload.text ?? "";
+        if (!text) return;
+
+        const match = text.match(
+          /===EVOPACK_START===([\s\S]*?)===EVOPACK_END===/,
+        );
+
+        if (!match) {
+          ctx.log?.error?.("[agentevo] agent response did not contain EVOPACK markers");
+          return;
+        }
+
+        const block = match[1].trim();
+        const nameMatch = block.match(/^NAME:\s*(.+)$/m);
+        const descMatch = block.match(/^DESCRIPTION:\s*(.+)$/m);
+        const tagsMatch = block.match(/^TAGS:\s*(.+)$/m);
+        const contentMatch = block.match(/CONTENT:\s*\n([\s\S]*)/);
+
+        const name = nameMatch?.[1]?.trim() || `Teaching: ${msg.topic}`;
+        const description = descMatch?.[1]?.trim() || "";
+        const tags = (tagsMatch?.[1]?.trim() || "")
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean);
+        const content = contentMatch?.[1]?.trim() || text;
+
+        const currentSend = send ?? getActiveSend();
+        if (!currentSend) {
+          ctx.log?.error?.("[agentevo] no active WebSocket for EvoPack upload");
+          return;
+        }
+
+        ctx.log?.info?.(`[agentevo] uploading EvoPack "${name}" for session ${msg.session_id}`);
+        currentSend({
+          type: "upload_evopack",
+          session_id: msg.session_id,
+          name,
+          description,
+          tags,
+          content,
+        });
+      },
+      onRecordError: (err) => {
+        ctx.log?.error?.(`[agentevo] generate_evopack record error: ${err}`);
+      },
+      onDispatchError: (err, info) => {
+        ctx.log?.error?.(`[agentevo] generate_evopack dispatch error (${info.kind}): ${err}`);
+      },
+    });
+  } catch (err) {
+    ctx.log?.error?.(`[agentevo] handleInboundGenerateEvoPack failed: ${err}`);
+  }
 }

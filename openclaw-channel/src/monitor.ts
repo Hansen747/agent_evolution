@@ -13,7 +13,8 @@ export interface MonitorAgentevoOpts {
   onGuidance?: (msg: Extract<PlatformInboundMessage, { type: "guidance" }>) => Promise<void>;
   onEvoPackShared?: (msg: Extract<PlatformInboundMessage, { type: "evopack_shared" }>) => Promise<void>;
   onDirectMessage?: (msg: Extract<PlatformInboundMessage, { type: "direct_message" }>) => Promise<void>;
-  onSessionClosed?: (msg: Extract<PlatformInboundMessage, { type: "session_closed" }>) => void;
+  onSessionClosed?: (msg: Extract<PlatformInboundMessage, { type: "session_closed" }>) => Promise<void>;
+  onGenerateEvoPack?: (msg: Extract<PlatformInboundMessage, { type: "generate_evopack" }>) => Promise<void>;
   logger?: {
     info?: (msg: string) => void;
     error?: (msg: string) => void;
@@ -33,6 +34,7 @@ interface SendFn {
   (msg: { type: "message"; session_id: string; content: string }): void;
   (msg: { type: "create_session"; expert_id: string; topic: string; message: string }): void;
   (msg: { type: "close_session"; session_id: string }): void;
+  (msg: { type: "upload_evopack"; session_id: string; name: string; description: string; tags: string[]; content: string }): void;
   (msg: { type: "direct_message"; content: string }): void;
 }
 
@@ -204,7 +206,23 @@ async function connectOnce(opts: MonitorAgentevoOpts): Promise<void> {
           break;
 
         case "session_closed":
-          opts.onSessionClosed?.(payload);
+          if (opts.onSessionClosed) {
+            try {
+              await opts.onSessionClosed(payload);
+            } catch (err) {
+              logger?.error?.(`agentevo session_closed handler error: ${err}`);
+            }
+          }
+          break;
+
+        case "generate_evopack":
+          if (opts.onGenerateEvoPack) {
+            try {
+              await opts.onGenerateEvoPack(payload);
+            } catch (err) {
+              logger?.error?.(`agentevo generate_evopack handler error: ${err}`);
+            }
+          }
           break;
 
         case "error":

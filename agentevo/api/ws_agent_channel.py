@@ -38,6 +38,13 @@ Protocol (JSON over WS):
   Agent→Platform:  {"type": "close_session", "session_id": "..."}
   Platform→Both:   {"type": "session_closed", "session_id": "..."}
 
+  -- Post-session EvoPack generation --
+  Platform→Expert: {"type": "generate_evopack", "session_id": "...",
+                    "topic": "...", "learning_objective": "..."}
+  Expert→Platform: {"type": "upload_evopack", "session_id": "...",
+                    "name": "...", "description": "...", "tags": [...],
+                    "content": "..."}
+
   -- Direct message (user ↔ agent free chat, no session/turn control) --
   User→Platform:   {"type": "direct_message", "content": "..."}
   Platform→Agent:  {"type": "direct_message", "agent_id": "...", "content": "...",
@@ -49,7 +56,10 @@ Protocol (JSON over WS):
 
 import json
 import logging
+import os
 import uuid
+import zipfile
+from io import BytesIO
 from datetime import datetime, timezone
 from typing import Dict, Optional
 
@@ -61,6 +71,8 @@ import jwt
 from agentevo.core.database import SessionLocal
 from agentevo.core.config import settings
 from agentevo.models.models import Agent, ExpertAgent, ChatSession, ChatMessage, SubagentAsset, DirectMessage
+
+MAX_SESSION_MESSAGES = 50
 
 logger = logging.getLogger(__name__)
 
@@ -322,8 +334,12 @@ async def _handle_message(
     if counterpart_id:
         await agent_manager.send(counterpart_id, outgoing)
 
-    # Also push to frontend observers via the session broadcast
     await _broadcast_to_observers(session.id, outgoing)
+
+    if "[TEACHING_COMPLETE]" in content or "[LEARNING_COMPLETE]" in content:
+        await _auto_close_session(session, db)
+    elif session.message_count >= MAX_SESSION_MESSAGES:
+        await _auto_close_session(session, db)
 
 
 async def _handle_guidance(
@@ -449,6 +465,119 @@ async def _handle_close_session(
         await agent_manager.send(counterpart_id, closed_msg)
 
     await _broadcast_to_observers(session.id, closed_msg)
+
+    await _request_evopack_generation(session, db)
+
+
+async def _auto_close_session(session: ChatSession, db: DBSession):
+    """Auto-close a session that reached the message limit."""
+    session.status = "closed"
+    db.commit()
+
+    closed_msg = {"type": "session_closed", "session_id": session.id}
+
+    student_id = _get_student_agent_id(session)
+    expert_id = _get_expert_agent_id(session, db)
+
+    await agent_manager.send(student_id, closed_msg)
+    if expert_id:
+        await agent_manager.send(expert_id, closed_msg)
+    await _broadcast_to_observers(session.id, closed_msg)
+
+    logger.info(f"Session {session.id} auto-closed (reached {MAX_SESSION_MESSAGES} messages)")
+
+    await _request_evopack_generation(session, db)
+
+
+async def _request_evopack_generation(session: ChatSession, db: DBSession):
+    """Ask the expert agent to generate an EvoPack after session close."""
+    expert_agent_id = _get_expert_agent_id(session, db)
+    if not expert_agent_id:
+        return
+
+    await agent_manager.send(expert_agent_id, {
+        "type": "generate_evopack",
+        "session_id": session.id,
+        "topic": session.topic or "",
+        "learning_objective": session.learning_objective or "",
+    })
+
+    logger.info(f"Requested EvoPack generation from expert for session {session.id}")
+
+
+async def _handle_upload_evopack(
+    agent: Agent, payload: dict, websocket: WebSocket, db: DBSession
+):
+    """Expert uploads EvoPack content generated after a teaching session."""
+    session_id = payload.get("session_id", "").strip()
+    name = payload.get("name", "").strip()
+    description = payload.get("description", "").strip()
+    tags = payload.get("tags", [])
+    content = payload.get("content", "").strip()
+
+    if not session_id or not name or not content:
+        await websocket.send_json({"type": "error", "detail": "Missing required fields for EvoPack upload"})
+        return
+
+    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+    if not session:
+        await websocket.send_json({"type": "error", "detail": "Session not found"})
+        return
+
+    sender_role = _get_sender_role(session, agent.id, db)
+    if sender_role != "expert":
+        await websocket.send_json({"type": "error", "detail": "Only the expert can upload an EvoPack"})
+        return
+
+    if not agent.owner_id:
+        await websocket.send_json({"type": "error", "detail": "Agent is not bound to any user"})
+        return
+
+    skill_md = f"# {name}\n\n{description}\n\n---\n\n{content}"
+
+    asset_storage = os.path.join(settings.STORAGE_DIR, "assets")
+    os.makedirs(asset_storage, exist_ok=True)
+
+    asset = SubagentAsset(
+        creator_id=agent.owner_id,
+        agent_id=agent.id,
+        name=name,
+        description=description,
+        tags=tags if isinstance(tags, list) else [],
+        skill_md=skill_md,
+        entry_file=None,
+        file_list=["SKILL.md"],
+    )
+    db.add(asset)
+    db.flush()
+
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("SKILL.md", skill_md)
+    buf.seek(0)
+
+    archive_path = os.path.join(asset_storage, f"{asset.id}.zip")
+    with open(archive_path, "wb") as f:
+        f.write(buf.read())
+
+    asset.archive_path = archive_path
+    session.shared_asset_id = asset.id
+    db.commit()
+    db.refresh(asset)
+
+    logger.info(f"Expert uploaded EvoPack '{name}' (id={asset.id}) for session {session.id}")
+
+    shared_msg = {
+        "type": "evopack_shared",
+        "session_id": session.id,
+        "asset_id": asset.id,
+        "asset_name": asset.name,
+    }
+
+    student_id = _get_student_agent_id(session)
+    await agent_manager.send(student_id, shared_msg)
+    await websocket.send_json(shared_msg)
+    await _broadcast_to_observers(session.id, shared_msg)
 
 
 async def _handle_direct_message_from_agent(
@@ -653,6 +782,8 @@ async def agent_channel(websocket: WebSocket, key: str = ""):
                     await _handle_share_evopack(agent, payload, websocket, db)
                 elif msg_type == "close_session":
                     await _handle_close_session(agent, payload, websocket, db)
+                elif msg_type == "upload_evopack":
+                    await _handle_upload_evopack(agent, payload, websocket, db)
                 elif msg_type == "direct_message":
                     await _handle_direct_message_from_agent(agent, payload, websocket, db)
                 else:

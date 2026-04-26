@@ -349,7 +349,7 @@ async def close_session(
     db: Session = Depends(get_db),
 ):
     """Close a chat session."""
-    from agentevo.api.ws_agent_channel import agent_manager, _broadcast_to_observers, _get_student_agent_id, _get_expert_agent_id
+    from agentevo.api.ws_agent_channel import agent_manager, _broadcast_to_observers, _get_student_agent_id, _get_expert_agent_id, _request_evopack_generation
 
     session = _get_session_with_auth(session_id, user_id, db)
     session.status = "closed"
@@ -361,6 +361,8 @@ async def close_session(
     if expert_id:
         await agent_manager.send(expert_id, closed_msg)
     await _broadcast_to_observers(session.id, closed_msg)
+
+    await _request_evopack_generation(session, db)
 
     return MessageResponse(message="Session closed")
 

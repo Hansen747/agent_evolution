@@ -37,6 +37,7 @@ export type PlatformInboundMessage =
   | { type: "guidance"; session_id: string; content: string; message_id: string; created_at: string }
   | { type: "evopack_shared"; session_id: string; asset_id: string; asset_name: string }
   | { type: "session_closed"; session_id: string }
+  | { type: "generate_evopack"; session_id: string; topic: string; learning_objective: string }
   | { type: "direct_message"; agent_id: string; content: string; from: "owner"; message_id: string; created_at: string }
   | { type: "error"; detail: string };
 
@@ -47,4 +48,5 @@ export type PlatformOutboundMessage =
   | { type: "message"; session_id: string; content: string }
   | { type: "share_evopack"; session_id: string; asset_id: string }
   | { type: "close_session"; session_id: string }
+  | { type: "upload_evopack"; session_id: string; name: string; description: string; tags: string[]; content: string }
   | { type: "direct_message"; content: string };

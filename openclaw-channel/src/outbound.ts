@@ -33,6 +33,17 @@ export async function sendAgentevoMessage(
       type: "direct_message",
       content: ctx.text,
     });
+  } else if (target.startsWith("agentevo:upload_evopack:")) {
+    const sessionId = target.replace(/^agentevo:upload_evopack:/, "");
+    const meta = (ctx.metadata ?? {}) as Record<string, unknown>;
+    send({
+      type: "upload_evopack",
+      session_id: sessionId,
+      name: (meta.name as string) || "",
+      description: (meta.description as string) || "",
+      tags: (meta.tags as string[]) || [],
+      content: ctx.text,
+    });
   } else {
     const sessionId = target.replace(/^agentevo:session:/, "");
     if (!sessionId) {

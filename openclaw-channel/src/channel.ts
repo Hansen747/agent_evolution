@@ -120,10 +120,11 @@ export const agentevoPlugin: ChannelPlugin<ResolvedAgentevoAccount> =
             onDirectMessage: async (msg) => {
               await (await loadAgentevoRuntime()).handleInboundDirectMessage(msg, ctx);
             },
-            onSessionClosed: (msg) => {
-              ctx.log?.info(
-                `[agentevo] session ${msg.session_id} closed by counterpart`,
-              );
+            onSessionClosed: async (msg) => {
+              await (await loadAgentevoRuntime()).handleInboundSessionClosed(msg, ctx);
+            },
+            onGenerateEvoPack: async (msg) => {
+              await (await loadAgentevoRuntime()).handleInboundGenerateEvoPack(msg, ctx);
             },
             logger: {
               info: (m) => ctx.log?.info(m),
